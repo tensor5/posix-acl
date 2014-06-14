@@ -2,9 +2,9 @@
 
 module System.Posix.ACL.Acl_h where
 
-import Foreign
-import Foreign.C
-import System.Posix.Types (CSsize(..))
+import           Foreign
+import           Foreign.C
+import           System.Posix.Types (CSsize (..))
 
 #include <sys/acl.h>
 
@@ -68,13 +68,13 @@ cAclNextEntry :: Num a => a
 cAclNextEntry = #{const ACL_NEXT_ENTRY}
 
 foreign import ccall unsafe "acl_init"
-  c_acl_init :: CInt -> IO (AclT)
+  c_acl_init :: CInt -> IO AclT
 
 foreign import ccall unsafe "acl_dup"
-  c_acl_dup :: AclT -> IO (AclT)
+  c_acl_dup :: AclT -> IO AclT
 
 foreign import ccall unsafe "acl_free"
-  c_acl_free :: Ptr () -> IO (CInt)
+  c_acl_free :: Ptr () -> IO CInt
 
 -- For ForeignPtr
 foreign import ccall "wrapper"
@@ -82,76 +82,76 @@ foreign import ccall "wrapper"
 --
 
 foreign import ccall unsafe "acl_valid"
-  c_acl_valid :: AclT -> IO (CInt)
+  c_acl_valid :: AclT -> IO CInt
 
 foreign import ccall unsafe "acl_copy_entry"
-  c_acl_copy_entry :: AclEntryT -> AclEntryT -> IO (CInt)
+  c_acl_copy_entry :: AclEntryT -> AclEntryT -> IO CInt
 
 foreign import ccall unsafe "acl_create_entry"
-  c_acl_create_entry :: Ptr (AclT) -> Ptr (AclEntryT) -> IO (CInt)
+  c_acl_create_entry :: Ptr AclT -> Ptr AclEntryT -> IO CInt
 
 foreign import ccall unsafe "acl_delete_entry"
-  c_acl_delete_entry :: AclT -> AclEntryT -> IO (CInt)
+  c_acl_delete_entry :: AclT -> AclEntryT -> IO CInt
 
 foreign import ccall unsafe "acl_get_entry"
-  c_acl_get_entry :: AclT -> CInt -> Ptr (AclEntryT) -> IO (CInt)
+  c_acl_get_entry :: AclT -> CInt -> Ptr AclEntryT -> IO CInt
 
 foreign import ccall unsafe "acl_add_perm"
-  c_acl_add_perm :: AclPermsetT -> AclPermT -> IO (CInt)
+  c_acl_add_perm :: AclPermsetT -> AclPermT -> IO CInt
 
 foreign import ccall unsafe "acl_calc_mask"
-  c_acl_calc_mask :: Ptr (AclT) -> IO (CInt)
+  c_acl_calc_mask :: Ptr AclT -> IO CInt
 
 foreign import ccall unsafe "acl_clear_perms"
-  c_acl_clear_perms :: AclPermsetT -> IO (CInt)
+  c_acl_clear_perms :: AclPermsetT -> IO CInt
 
 foreign import ccall unsafe "acl_delete_perm"
-  c_acl_delete_perm :: AclPermsetT -> AclPermT -> IO (CInt)
+  c_acl_delete_perm :: AclPermsetT -> AclPermT -> IO CInt
 
 foreign import ccall unsafe "acl_get_permset"
-  c_acl_get_permset :: AclEntryT -> Ptr (AclPermsetT) -> IO (CInt)
+  c_acl_get_permset :: AclEntryT -> Ptr AclPermsetT -> IO CInt
 
 foreign import ccall unsafe "acl_set_permset"
-  c_acl_set_permset :: AclEntryT -> AclPermsetT -> IO (CInt)
+  c_acl_set_permset :: AclEntryT -> AclPermsetT -> IO CInt
 
 foreign import ccall unsafe "acl_get_qualifier"
   c_acl_get_qualifier :: AclEntryT -> IO (Ptr ())
 
 foreign import ccall unsafe "acl_get_tag_type"
-  c_acl_get_tag_type :: AclEntryT -> Ptr (AclTagT) -> IO (CInt)
+  c_acl_get_tag_type :: AclEntryT -> Ptr AclTagT -> IO CInt
 
 foreign import ccall unsafe "acl_set_qualifier"
-  c_acl_set_qualifier :: AclEntryT -> Ptr () -> IO (CInt)
+  c_acl_set_qualifier :: AclEntryT -> Ptr () -> IO CInt
 
 foreign import ccall unsafe "acl_set_tag_type"
-  c_acl_set_tag_type :: AclEntryT -> AclTagT -> IO (CInt)
+  c_acl_set_tag_type :: AclEntryT -> AclTagT -> IO CInt
 
 foreign import ccall unsafe "acl_copy_ext"
-  c_acl_copy_ext :: Ptr () -> AclT -> CSsize -> IO (CSsize)
+  c_acl_copy_ext :: Ptr () -> AclT -> CSsize -> IO CSsize
 
 foreign import ccall unsafe "acl_copy_int"
-  c_acl_copy_int :: Ptr () -> IO (AclT)
+  c_acl_copy_int :: Ptr () -> IO AclT
 
 foreign import ccall unsafe "acl_from_text"
-  c_acl_from_text :: CString -> IO (AclT)
+  c_acl_from_text :: CString -> IO AclT
 
 foreign import ccall unsafe "acl_size"
-  c_acl_size :: AclT -> IO (CSsize)
+  c_acl_size :: AclT -> IO CSsize
 
 foreign import ccall unsafe "acl_to_text"
-  c_acl_to_text :: AclT -> Ptr (CSsize) -> IO (CString)
+  c_acl_to_text :: AclT -> Ptr CSsize -> IO CString
 
 foreign import ccall unsafe "acl_delete_def_file"
-  c_acl_delete_def_file :: CString -> IO (CInt)
+  c_acl_delete_def_file :: CString -> IO CInt
 
 foreign import ccall unsafe "acl_get_fd"
-  c_acl_get_fd :: CInt -> IO (AclT)
+  c_acl_get_fd :: CInt -> IO AclT
 
 foreign import ccall unsafe "acl_get_file"
-  c_acl_get_file :: CString -> AclTypeT -> IO (AclT)
+  c_acl_get_file :: CString -> AclTypeT -> IO AclT
 
 foreign import ccall unsafe "acl_set_fd"
-  c_acl_set_fd :: CInt -> AclT -> IO (CInt)
+  c_acl_set_fd :: CInt -> AclT -> IO CInt
 
 foreign import ccall unsafe "acl_set_file"
-  c_acl_set_file :: CString -> AclTypeT -> AclT -> IO (CInt)
+  c_acl_set_file :: CString -> AclTypeT -> AclT -> IO CInt

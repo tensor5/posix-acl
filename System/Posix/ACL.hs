@@ -19,15 +19,15 @@ module System.Posix.ACL
     , deleteDefaultACL
     ) where
 
-import Control.Monad (foldM, replicateM_, when)
-import Data.Bits (Bits, (.&.))
-import Data.Map
-import System.Posix.Types (UserID, GroupID, Fd)
-import System.Posix.ACL.Acl_h (cAclRead, cAclWrite, cAclExecute)
-import System.Posix.ACL.Internals hiding (ACL, Permset)
-import qualified System.Posix.ACL.Internals as I
-import Text.ParserCombinators.ReadP
-import Text.Read hiding ((+++), (<++))
+import           Control.Monad                (foldM, replicateM_, when)
+import           Data.Bits                    (Bits, (.&.))
+import           Data.Map
+import           System.Posix.ACL.Acl_h       (cAclExecute, cAclRead, cAclWrite)
+import           System.Posix.ACL.Internals   hiding (ACL, Permset)
+import qualified System.Posix.ACL.Internals   as I
+import           System.Posix.Types           (Fd, GroupID, UserID)
+import           Text.ParserCombinators.ReadP
+import           Text.Read                    hiding ((+++), (<++))
 
 
 -- | A combination of read, write and execute permissions.
@@ -39,7 +39,7 @@ data Permset = Permset { hasRead    :: Bool
 toPermset :: (Bits a, Integral a) => a -> Permset
 toPermset a =
     Permset (hasCPerm cAclRead) (hasCPerm cAclWrite) (hasCPerm cAclExecute)
-        where hasCPerm x = if x .&. (fromIntegral a) == x then True else False
+        where hasCPerm x = x .&. fromIntegral a == x
 
 -- | No permission.
 emptyPermset :: Permset
@@ -51,15 +51,15 @@ fullPermset = Permset True True True
 
 -- | Give a permission if any of the two arguments grant that permission.
 unionPermsets :: Permset -> Permset -> Permset
-unionPermsets p q = Permset (if hasRead p || hasRead q then True else False)
-                    (if hasWrite p || hasWrite q then True else False)
-                    (if hasExecute p || hasExecute q then True else False)
+unionPermsets p q = Permset (hasRead p || hasRead q)
+                    (hasWrite p || hasWrite q)
+                    (hasExecute p || hasExecute q)
 
 -- | Give a permission if both the arguments grant that permission.
 intersectPermsets :: Permset -> Permset -> Permset
-intersectPermsets p q = Permset (if hasRead p && hasRead q then True else False)
-                        (if hasWrite p && hasWrite q then True else False)
-                        (if hasExecute p && hasExecute q then True else False)
+intersectPermsets p q = Permset (hasRead p && hasRead q)
+                        (hasWrite p && hasWrite q)
+                        (hasExecute p && hasExecute q)
 
 instance Show Permset where
     showsPrec = showsPermset
@@ -118,16 +118,16 @@ instance Read Permset where
 -- instance is defined to output the /Long Text Form/ of the ACL
 -- (section 23.3.1), while the @'Read'@ instance is defined to be able
 -- to parse both the long and short text form.
-data ACL = MinimumACL { ownerPerms :: Permset
+data ACL = MinimumACL { ownerPerms       :: Permset
                       , owningGroupPerms :: Permset
-                      , otherPerms :: Permset
+                      , otherPerms       :: Permset
                       }
-         | ExtendedACL { ownerPerms :: Permset
-                       , usersPerms :: Map UserID Permset
+         | ExtendedACL { ownerPerms       :: Permset
+                       , usersPerms       :: Map UserID Permset
                        , owningGroupPerms :: Permset
-                       , groupsPerms :: Map GroupID Permset
-                       , mask :: Permset
-                       , otherPerms :: Permset
+                       , groupsPerms      :: Map GroupID Permset
+                       , mask             :: Permset
+                       , otherPerms       :: Permset
                        }
            deriving Eq
 
@@ -209,22 +209,16 @@ parseExtLongTextFrom = do
                   uid <- readPrec_to_P readPrec 0
                   _ <- char ':'
                   p1 <- parseLongTextPermset
-                  _ <- option p1 $ do skipSpaces
-                                      _ <- string "#effective:"
-                                      parseLongTextPermset
+                  _ <- option p1 effective
                   return (uid,p1)
   _ <- string "\ngroup::"
   og <- parseLongTextPermset
-  _ <- option og $ do skipSpaces
-                      _ <- string "#effective:"
-                      parseLongTextPermset
+  _ <- option og effective
   gs <- many $ do _ <- string "\ngroup:"
                   gid <- readPrec_to_P readPrec 0
                   _ <- char ':'
                   p2 <- parseLongTextPermset
-                  _ <- option p2 $ do skipSpaces
-                                      _ <- string "#effective:"
-                                      parseLongTextPermset
+                  _ <- option p2 effective
                   return (gid,p2)
   _ <- string "\nmask::"
   m <- parseLongTextPermset
@@ -232,6 +226,9 @@ parseExtLongTextFrom = do
   ot <- parseLongTextPermset
   return $ ExtendedACL ow (fromListWith unionPermsets us)
                        og (fromListWith unionPermsets gs) m ot
+      where effective = do skipSpaces
+                           _ <- string "#effective:"
+                           parseLongTextPermset
 
 parseShortTextForm :: ReadP ACL
 parseShortTextForm = parseMinShortTextForm +++ parseExtShortTextForm
@@ -279,7 +276,7 @@ toCACL :: ACL -> IO I.ACL
 toCACL (MinimumACL ow og ot) = do cacl <- newACL 3
                                   replicateM_ 3 (createEntry cacl)
                                   ents <- getEntries cacl
-                                  setUserObjEnt ow (ents!!0)
+                                  setUserObjEnt ow (head ents)
                                   setGroupObjEnt og (ents!!1)
                                   setOtherEnt ot (ents!!2)
                                   return cacl
@@ -287,7 +284,7 @@ toCACL (ExtendedACL ow us og gr m ot) = do
   cacl <- newACL (4 + size us + size gr)
   replicateM_ (4 + size us + size gr) (createEntry cacl)
   ents <- getEntries cacl
-  setUserObjEnt ow (ents!!0)
+  setUserObjEnt ow (head ents)
   mapM_ setUserEnt (zip (userSubStr ents) (toList us))
   setGroupObjEnt og (groupElem ents)
   mapM_ setGroupEnt (zip (groupSubStr ents) (toList gr))
@@ -338,15 +335,15 @@ fdSetACL :: Fd -> ACL -> IO ()
 fdSetACL fd acl = toCACL acl >>= setFdACL fd
 
 -- | Retrieve the ACL from a file.
-getACL :: FilePath -> IO (ACL)
+getACL :: FilePath -> IO ACL
 getACL path = getFileACL path Access >>= peekCACL
 
 -- | Retrieve the default ACL from a directory.
-getDefaultACL :: FilePath -> IO (ACL)
+getDefaultACL :: FilePath -> IO ACL
 getDefaultACL path = getFileACL path Default >>= peekCACL
 
 -- | Retrieve the ACL from a file, given its file descriptor.
-fdGetACL :: Fd -> IO (ACL)
+fdGetACL :: Fd -> IO ACL
 fdGetACL fd = getFdACL fd >>= peekCACL
 
 peekCACL :: I.ACL -> IO ACL
