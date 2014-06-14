@@ -2,9 +2,9 @@ Name:           posix-acl
 Version:        0.1.0.0
 Cabal-Version:  >= 1.10
 Build-Type:     Simple
-License:        LGPL-2.1
+License:        BSD3
 License-File:   LICENSE
-Copyright:      Copyright © 2013 Nicola Squartini
+Copyright:      © 2013-2014 Nicola Squartini
 Author:         Nicola Squartini
 Maintainer:     Nicola Squartini <tensor5@gmail.com>
 Bug-Reports:    mailto:tensor5@gmail.com
