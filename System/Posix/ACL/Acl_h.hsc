@@ -1,5 +1,3 @@
-{-# LANGUAGE ForeignFunctionInterface #-}
-
 module System.Posix.ACL.Acl_h where
 
 import           Foreign

@@ -1,6 +1,6 @@
 Name:           posix-acl
 Version:        0.1.0.0
-Cabal-Version:  >= 1.8
+Cabal-Version:  >= 1.10
 Build-Type:     Simple
 License:        LGPL-2.1
 License-File:   LICENSE
@@ -16,6 +16,7 @@ Description:
   section 23 of the draft standard IEEE Std 1003.1e.
 
 Library
+  Default-Language:     Haskell2010
   Build-Depends:        base == 4.*,
 --                        bytestring == 0.10.*,
                         containers == 0.5.*
