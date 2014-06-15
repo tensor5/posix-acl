@@ -23,7 +23,7 @@ import           Control.Applicative          ((<$>))
 import           Control.Monad                (foldM, replicateM_, when)
 import           Data.Bits                    (Bits, (.&.))
 import           Data.Map                     hiding (null)
-import           System.Posix.ACL.Acl_h       (cAclExecute, cAclRead, cAclWrite)
+import           System.Posix.ACL.Acl_h       (aclExecute, aclRead, aclWrite)
 import           System.Posix.ACL.Internals   hiding (ACL, Permset)
 import qualified System.Posix.ACL.Internals   as I
 import           System.Posix.Types           (Fd, GroupID, UserID)
@@ -39,7 +39,7 @@ data Permset = Permset { hasRead    :: Bool
 
 toPermset :: (Bits a, Integral a) => a -> Permset
 toPermset a =
-    Permset (hasCPerm cAclRead) (hasCPerm cAclWrite) (hasCPerm cAclExecute)
+    Permset (hasCPerm aclRead) (hasCPerm aclWrite) (hasCPerm aclExecute)
         where hasCPerm x = x .&. fromIntegral a == x
 
 -- | No permission.
