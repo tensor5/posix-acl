@@ -52,15 +52,13 @@ fullPermset = Permset True True True
 
 -- | Give a permission if any of the two arguments grant that permission.
 unionPermsets :: Permset -> Permset -> Permset
-unionPermsets p q = Permset (hasRead p || hasRead q)
-                    (hasWrite p || hasWrite q)
-                    (hasExecute p || hasExecute q)
+unionPermsets (Permset r1 w1 e1) (Permset r2 w2 e2) =
+    Permset (r1 || r2) (w1 || w2) (e1 || e2)
 
 -- | Give a permission if both the arguments grant that permission.
 intersectPermsets :: Permset -> Permset -> Permset
-intersectPermsets p q = Permset (hasRead p && hasRead q)
-                        (hasWrite p && hasWrite q)
-                        (hasExecute p && hasExecute q)
+intersectPermsets (Permset r1 w1 e1) (Permset r2 w2 e2) =
+    Permset (r1 && r2) (w1 && w2) (e1 && e2)
 
 instance Show Permset where
     showsPrec = showsPermset
@@ -369,14 +367,14 @@ addCEntry acl ent = do
   addPermsetWithTag tag ent acl (toPermset (n::Int))
     where addPermsetWithTag t e a p =
               case t of
-                User -> do Just (UserID uid) <- getQualifier e
-                           return $ addUserPermset uid p a
-                Group -> do Just (GroupID gid) <- getQualifier e
-                            return $ addGroupPermset gid p a
-                UserObj -> return $ addUserObjPermset p a
-                GroupObj -> return $ addGroupObjPermset p a
-                Other -> return $ addOtherPermset p a
-                Mask -> return $ setMaskPermset p a
+                UserObj   -> return $ addUserObjPermset p a
+                User      -> do Just (UserID uid) <- getQualifier e
+                                return $ addUserPermset uid p a
+                GroupObj  -> return $ addGroupObjPermset p a
+                Group     -> do Just (GroupID gid) <- getQualifier e
+                                return $ addGroupPermset gid p a
+                Mask      -> return $ setMaskPermset p a
+                Other     -> return $ addOtherPermset p a
                 Undefined -> return undefined
 
 

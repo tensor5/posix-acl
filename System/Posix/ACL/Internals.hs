@@ -71,8 +71,8 @@ data Perm = Read
             deriving (Eq, Read, Show)
 
 fromPerm :: Perm -> AclPermT
-fromPerm Read = aclRead
-fromPerm Write = aclWrite
+fromPerm Read    = aclRead
+fromPerm Write   = aclWrite
 fromPerm Execute = aclExecute
 
 
@@ -81,7 +81,7 @@ data Type = Access
             deriving (Eq, Read, Show)
 
 fromType :: Type -> AclTypeT
-fromType Access = aclTypeAccess
+fromType Access  = aclTypeAccess
 fromType Default = aclTypeDefault
 
 data Tag = UserObj
@@ -94,21 +94,20 @@ data Tag = UserObj
            deriving (Eq, Read, Show)
 
 instance Enum Tag where
+    fromEnum UserObj   = fromIntegral aclUserObj
+    fromEnum User      = fromIntegral aclUser
+    fromEnum GroupObj  = fromIntegral aclGroupObj
+    fromEnum Group     = fromIntegral aclGroup
+    fromEnum Mask      = fromIntegral aclMask
+    fromEnum Other     = fromIntegral aclOther
     fromEnum Undefined = fromIntegral aclUndefinedTag
-    fromEnum UserObj = fromIntegral aclUserObj
-    fromEnum User = fromIntegral aclUser
-    fromEnum GroupObj = fromIntegral aclGroupObj
-    fromEnum Group = fromIntegral aclGroup
-    fromEnum Mask = fromIntegral aclMask
-    fromEnum Other = fromIntegral aclOther
-
-    toEnum n | n == fromIntegral aclUndefinedTag = Undefined
-             | n == fromIntegral aclUserObj = UserObj
-             | n == fromIntegral aclUser = User
-             | n == fromIntegral aclGroupObj = GroupObj
-             | n == fromIntegral aclGroup = Group
-             | n == fromIntegral aclMask = Mask
-             | n == fromIntegral aclOther = Other
+    toEnum n | n == fromIntegral aclUserObj      = UserObj
+             | n == fromIntegral aclUser         = User
+             | n == fromIntegral aclGroupObj     = GroupObj
+             | n == fromIntegral aclGroup        = Group
+             | n == fromIntegral aclMask         = Mask
+             | n == fromIntegral aclOther        = Other
+             | n == fromIntegral aclUndefinedTag = Undefined
              | otherwise = error ("(Prelude.toEnum " ++ show n ++ ")::Tag: "
                                   ++ show n
                                   ++ " is outside of enumeration range")
@@ -161,19 +160,19 @@ permsetToIntegral p = fromIntegral <$> permsetToCUInt p
 peekAndThrowErrnoIfNull :: String -> (Ptr a -> IO b) -> Ptr a -> IO b
 peekAndThrowErrnoIfNull str fun ptr =
   if ptr == nullPtr
-    then throwErrno str
-    else fun ptr
+  then throwErrno str
+  else fun ptr
 
 
 -- | @'newACL' n@ allocates an ACL of at least @n@ entries.
 newACL :: Int -> IO ACL
-newACL n = acl_init (fromIntegral n)
-           >>= peekAndThrowErrnoIfNull "acl_init" toACL
+newACL n =
+    acl_init (fromIntegral n) >>= peekAndThrowErrnoIfNull "acl_init" toACL
 
 -- | Return a copy of the original ACL.
 duplicate :: ACL -> IO ACL
-duplicate acl = withACL acl acl_dup
-                >>= peekAndThrowErrnoIfNull "acl_dup" toACL
+duplicate acl =
+    withACL acl acl_dup >>= peekAndThrowErrnoIfNull "acl_dup" toACL
 
 
 -- | Copy the first ACL entry into the second.
@@ -196,44 +195,32 @@ withAlloc fun =
 -- | Frees and reallocate the @'ACL'@ when there is not
 -- enough space inside it to create the new @'Entry'@.
 createEntry :: ACL -> IO Entry
-createEntry acl = do
-  (en, _) <- withACL acl (\x ->
-                          (with x (\p ->
-                                   withAlloc (throwErrnoIfMinus1
-                                              "acl_create_entry"
-                                              . acl_create_entry p
-                                             )
-                                  )
-                          )
-                         )
-
-  toEntry en
+createEntry acl =
+  withACL acl $ \x ->
+      with x $ \p ->
+          withAlloc (throwErrnoIfMinus1 "acl_create_entry" . acl_create_entry p)
+  >>= toEntry . fst
 
 -- | Remove an ACL entry from an ACL.
 deleteEntry :: ACL -> Entry -> IO ()
-deleteEntry acl ent = withACL acl (\x ->
-                                   withEntry ent (throwErrnoIfMinus1_
-                                                  "acl_delete_entry"
-                                                  . acl_delete_entry x
-                                                 )
-                                  )
+deleteEntry acl ent =
+    withACL acl $ \x ->
+        withEntry ent (throwErrnoIfMinus1_ "acl_delete_entry"
+                       . acl_delete_entry x)
 
 -- | Get the list of entries in an ACL.
 getEntries :: ACL -> IO [Entry]
 getEntries acl = do
   may <- getFirstEntry acl
   case may of
-    Nothing -> return []
-    Just ent -> do
-           ents <- getNextEntries acl
-           return (ent:ents)
-        where getNextEntries a = do
-                   m <- getNextEntry a
-                   case m of
-                     Nothing -> return []
-                     Just e -> do
-                            es <- getNextEntries a
-                            return (e:es)
+    Nothing  -> return []
+    Just ent -> do ents <- getNextEntries acl
+                   return (ent:ents)
+    where getNextEntries a = do m <- getNextEntry a
+                                case m of
+                                  Nothing -> return []
+                                  Just e  -> do es <- getNextEntries a
+                                                return (e:es)
 
 getFirstEntry :: ACL -> IO (Maybe Entry)
 getFirstEntry acl = getEntry acl aclFirstEntry
@@ -243,113 +230,93 @@ getNextEntry acl = getEntry acl aclNextEntry
 
 getEntry :: ACL -> CInt -> IO (Maybe Entry)
 getEntry acl n = do
-  (en,r) <- withACL acl (\x -> withAlloc (acl_get_entry x n))
+  (en,r) <- withACL acl $ \x -> withAlloc (acl_get_entry x n)
   case r of
     (-1) -> throwErrno "acl_get_entry"
-    0 -> return Nothing
-    1 -> Just <$> toEntry en
-    _ -> throwErrno "acl_get_entry"
+    0    -> return Nothing
+    1    -> Just <$> toEntry en
+    _    -> throwErrno "acl_get_entry"
 
 
 -- | Add the permission @'Perm'@ to a permission set.
 addPerm :: Permset -> Perm -> IO ()
-addPerm perms perm = withPermset perms (\x ->
-                                          throwErrnoIfMinus1_
-                                          "acl_add_perm"
-                                          (acl_add_perm x (fromPerm perm))
-                                       )
+addPerm perms perm =
+    withPermset perms $ \x ->
+        throwErrnoIfMinus1_ "acl_add_perm" (acl_add_perm x (fromPerm perm))
 
 -- | Frees and reallocate the @'ACL'@ when there there is not enough
 -- space inside it to allocate the mask.
 calcMask :: ACL -> IO ()
-calcMask acl = withACL acl (\x ->
-                                with x (throwErrnoIfMinus1_
-                                        "acl_calc_mask"
-                                        . acl_calc_mask
-                                       )
-                           )
+calcMask acl =
+    withACL acl $ \x ->
+        with x (throwErrnoIfMinus1_ "acl_calc_mask" . acl_calc_mask)
 
 clearPerms :: Permset -> IO ()
-clearPerms perms = withPermset perms (throwErrnoIfMinus1_
-                                      "acl_clear_perms"
-                                      . acl_clear_perms
-                                     )
+clearPerms perms =
+    withPermset perms (throwErrnoIfMinus1_ "acl_clear_perms" . acl_clear_perms)
 
 -- | Delete the permission @'Perm'@ from a permission set.
 deletePerm :: Permset -> Perm -> IO ()
-deletePerm perms perm = withPermset perms (\x ->
-                                           throwErrnoIfMinus1_
-                                           "acl_delete_perm"
-                                           (acl_delete_perm x (fromPerm perm))
-                                          )
+deletePerm perms perm =
+    withPermset perms $ \x ->
+        throwErrnoIfMinus1_ "acl_delete_perm" $
+        acl_delete_perm x (fromPerm perm)
 
 getPermset :: Entry -> IO Permset
-getPermset ent = do
-  (perms, _) <- withEntry ent (\x ->
-                                   withAlloc (throwErrnoIfMinus1
-                                              "acl_get_permset"
-                                              . acl_get_permset x
-                                             )
-                              )
-  toPermset perms
+getPermset ent =
+  withEntry ent $ \x ->
+      withAlloc (throwErrnoIfMinus1 "acl_get_permset" . acl_get_permset x)
+  >>= (toPermset . fst)
 
 setPermset :: Entry -> Permset -> IO ()
-setPermset ent perms = withEntry ent (\x ->
-                                      withPermset perms (throwErrnoIfMinus1_
-                                                         "acl_set_permset"
-                                                         . acl_set_permset x
-                                                        )
-                                     )
+setPermset ent perms =
+    withEntry ent $ \x ->
+        withPermset perms (throwErrnoIfMinus1_ "acl_set_permset"
+                           . acl_set_permset x)
 
 getTagType :: Entry -> IO Tag
-getTagType ent = do
-  (t, _) <- withEntry ent (\x ->
-                           withAlloc (throwErrnoIfMinus1 "acl_get_tag_type"
-                                      . acl_get_tag_type x
-                                     )
-                          )
-  return $ cToEnum t
+getTagType ent =
+ (cToEnum . fst) <$>
+ withEntry ent (\x ->
+                withAlloc (throwErrnoIfMinus1 "acl_get_tag_type"
+                           . acl_get_tag_type x))
 
 setTagType :: Entry -> Tag -> IO ()
-setTagType ent tag = withEntry ent (\x ->
-                                        throwErrnoIfMinus1_
-                                        "acl_set_tag_type"
-                                        (acl_set_tag_type x (cFromEnum tag))
-                                   )
+setTagType ent tag =
+    withEntry ent $ \x ->
+        throwErrnoIfMinus1_ "acl_set_tag_type" (acl_set_tag_type x
+                                                (cFromEnum tag))
 
 getQualifier :: Entry -> IO (Maybe Qualifier)
 getQualifier ent = do
   tag <- getTagType ent
   case tag of
-    User -> do
-             q <- getQual
-             if q == nullPtr
-               then throwErrno "acl_get_qualifier"
-               else do qual <- peek (castPtr q)
-                       aclFree q
-                       return $ Just (UserID qual)
-    Group -> do
-             q <- getQual
-             if q == nullPtr
-               then throwErrno "acl_get_qualifier"
-               else do qual <- peek (castPtr q)
-                       aclFree q
-                       return $ Just (GroupID qual)
+    User  -> do q <- getQual
+                if q == nullPtr
+                then throwErrno "acl_get_qualifier"
+                else do qual <- peek (castPtr q)
+                        aclFree q
+                        return $ Just (UserID qual)
+    Group -> do q <- getQual
+                if q == nullPtr
+                then throwErrno "acl_get_qualifier"
+                else do qual <- peek (castPtr q)
+                        aclFree q
+                        return $ Just (GroupID qual)
     _     -> return Nothing
     where getQual = withEntry ent acl_get_qualifier
 
 setQualifier :: Entry -> Qualifier -> IO ()
-setQualifier ent qual = case qual of
-                          UserID uid -> setQual uid
-                          GroupID gid -> setQual gid
-    where setQual i = withEntry ent (\x ->
-                                         with i (\p ->
-                                                     throwErrnoIfMinus1_
-                                                     "acl_set_qualifier"
-                                                     (acl_set_qualifier x $ castPtr p)
+setQualifier ent qual =
+    case qual of
+      UserID uid  -> setQual uid
+      GroupID gid -> setQual gid
+    where setQual i =
+              withEntry ent $ \x ->
+                  with i $ \p ->
+                      throwErrnoIfMinus1_
+                      "acl_set_qualifier" (acl_set_qualifier x $ castPtr p)
 
-                                                 )
-                                    )
 {-
 newtype ExtRepr = ExtRepr ByteString
     deriving (Eq, Show)
@@ -377,31 +344,28 @@ fromText :: String -> IO ACL
 fromText str = do
   p <- withCString str acl_from_text
   if p == nullPtr
-    then throwErrno "acl_from_text"
-    else toACL p
+  then throwErrno "acl_from_text"
+  else toACL p
 
 -- | Return the long text descripion of an @'ACL'@.
 toText :: ACL -> IO String
 toText acl = do
   cstr <- withACL acl (`acl_to_text` nullPtr)
   if cstr == nullPtr
-    then throwErrno "acl_to_text"
-    else do str <- peekCString cstr
-            aclFree cstr
-            return str
+  then throwErrno "acl_to_text"
+  else do str <- peekCString cstr
+          aclFree cstr
+          return str
 
 
 getFileACL :: FilePath -> Type -> IO ACL
 getFileACL path typ =  do
-  p <- withCString path (\x ->
-                             throwErrnoIfNull "acl_get_file" $
-                                              acl_get_file x (fromType typ))
+  p <- withCString path $ \x ->
+       throwErrnoIfNull "acl_get_file" (acl_get_file x (fromType typ))
   toACL p
 
 getFdACL :: Fd -> IO ACL
-getFdACL (Fd n) = do
-  p <- throwErrnoIfNull "acl_get_fd" (acl_get_fd n)
-  toACL p
+getFdACL (Fd n) = throwErrnoIfNull "acl_get_fd" (acl_get_fd n) >>= toACL
 
 setFdACL :: Fd -> ACL -> IO ()
 setFdACL (Fd n) acl =
@@ -409,13 +373,12 @@ setFdACL (Fd n) acl =
 
 setFileACL :: FilePath -> Type -> ACL -> IO ()
 setFileACL path typ acl =
-    withCString path (\x -> withACL acl
-                            (throwErrnoIfMinus1_ "acl_set_file"
-                             . acl_set_file x (fromType typ)))
+    withCString path $ \x ->
+        withACL acl (throwErrnoIfMinus1_ "acl_set_file"
+                     . acl_set_file x (fromType typ))
 
 -- | Delete the default ACL from a directory.
 deleteDefaultACL :: FilePath -> IO ()
-deleteDefaultACL file = withCString file $
-                        \x ->
-                        throwErrnoIfMinus1_ "acl_delete_def_file" $
-                                            acl_delete_def_file x
+deleteDefaultACL file =
+    withCString file $ \x ->
+        throwErrnoIfMinus1_ "acl_delete_def_file" $ acl_delete_def_file x
