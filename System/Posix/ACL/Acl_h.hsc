@@ -65,18 +65,20 @@ aclFirstEntry = #{const ACL_FIRST_ENTRY}
 aclNextEntry :: Num a => a
 aclNextEntry = #{const ACL_NEXT_ENTRY}
 
-foreign import ccall unsafe acl_init :: CInt -> IO AclT
+
+-- For ForeignPtr
+foreign import ccall "wrapper"
+  mkFinalizerPtr :: (Ptr a -> IO ()) -> IO (FinalizerPtr a)
+
+
 
 foreign import ccall unsafe acl_dup :: AclT -> IO AclT
 
 foreign import ccall unsafe acl_free :: Ptr () -> IO CInt
 
--- For ForeignPtr
-foreign import ccall "wrapper"
-  mkFinalizerPtr :: (Ptr a -> IO ()) -> IO (FinalizerPtr a)
---
+foreign import ccall unsafe acl_init :: CInt -> IO AclT
 
-foreign import ccall unsafe acl_valid :: AclT -> IO CInt
+
 
 foreign import ccall unsafe acl_copy_entry :: AclEntryT -> AclEntryT -> IO CInt
 
@@ -87,6 +89,9 @@ foreign import ccall unsafe acl_delete_entry :: AclT -> AclEntryT -> IO CInt
 
 foreign import ccall unsafe acl_get_entry :: AclT -> CInt -> Ptr AclEntryT
                                           -> IO CInt
+
+foreign import ccall unsafe acl_valid :: AclT -> IO CInt
+
 
 foreign import ccall unsafe acl_add_perm :: AclPermsetT -> AclPermT -> IO CInt
 
@@ -103,6 +108,7 @@ foreign import ccall unsafe acl_get_permset :: AclEntryT -> Ptr AclPermsetT
 foreign import ccall unsafe acl_set_permset :: AclEntryT -> AclPermsetT
                                             -> IO CInt
 
+
 foreign import ccall unsafe acl_get_qualifier :: AclEntryT -> IO (Ptr ())
 
 foreign import ccall unsafe acl_get_tag_type :: AclEntryT -> Ptr AclTagT
@@ -112,16 +118,7 @@ foreign import ccall unsafe acl_set_qualifier :: AclEntryT -> Ptr () -> IO CInt
 
 foreign import ccall unsafe acl_set_tag_type :: AclEntryT -> AclTagT -> IO CInt
 
-foreign import ccall unsafe acl_copy_ext :: Ptr () -> AclT -> CSsize
-                                         -> IO CSsize
 
-foreign import ccall unsafe acl_copy_int :: Ptr () -> IO AclT
-
-foreign import ccall unsafe acl_from_text :: CString -> IO AclT
-
-foreign import ccall unsafe acl_size :: AclT -> IO CSsize
-
-foreign import ccall unsafe acl_to_text :: AclT -> Ptr CSsize -> IO CString
 
 foreign import ccall unsafe acl_delete_def_file :: CString -> IO CInt
 
@@ -133,3 +130,16 @@ foreign import ccall unsafe acl_set_fd :: CInt -> AclT -> IO CInt
 
 foreign import ccall unsafe acl_set_file :: CString -> AclTypeT -> AclT
                                          -> IO CInt
+
+
+
+foreign import ccall unsafe acl_copy_ext :: Ptr () -> AclT -> CSsize
+                                         -> IO CSsize
+
+foreign import ccall unsafe acl_copy_int :: Ptr () -> IO AclT
+
+foreign import ccall unsafe acl_from_text :: CString -> IO AclT
+
+foreign import ccall unsafe acl_size :: AclT -> IO CSsize
+
+foreign import ccall unsafe acl_to_text :: AclT -> Ptr CSsize -> IO CString
