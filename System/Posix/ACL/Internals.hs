@@ -93,36 +93,30 @@ data Tag = UserObj
          | Undefined
            deriving (Eq, Read, Show)
 
-instance Enum Tag where
-    fromEnum UserObj   = fromIntegral aclUserObj
-    fromEnum User      = fromIntegral aclUser
-    fromEnum GroupObj  = fromIntegral aclGroupObj
-    fromEnum Group     = fromIntegral aclGroup
-    fromEnum Mask      = fromIntegral aclMask
-    fromEnum Other     = fromIntegral aclOther
-    fromEnum Undefined = fromIntegral aclUndefinedTag
-    toEnum n | n == fromIntegral aclUserObj      = UserObj
-             | n == fromIntegral aclUser         = User
-             | n == fromIntegral aclGroupObj     = GroupObj
-             | n == fromIntegral aclGroup        = Group
-             | n == fromIntegral aclMask         = Mask
-             | n == fromIntegral aclOther        = Other
-             | n == fromIntegral aclUndefinedTag = Undefined
-             | otherwise = error ("(Prelude.toEnum " ++ show n ++ ")::Tag: "
-                                  ++ show n
-                                  ++ " is outside of enumeration range")
+fromTag :: Tag -> AclTagT
+fromTag UserObj   = aclUserObj
+fromTag User      = aclUser
+fromTag GroupObj  = aclGroupObj
+fromTag Group     = aclGroup
+fromTag Mask      = aclMask
+fromTag Other     = aclOther
+fromTag Undefined = aclUndefinedTag
+
+toTag :: AclTagT -> Tag
+toTag t | t == aclUserObj      = UserObj
+        | t == aclUser         = User
+        | t == aclGroupObj     = GroupObj
+        | t == aclGroup        = Group
+        | t == aclMask         = Mask
+        | t == aclOther        = Other
+        | t == aclUndefinedTag = Undefined
+        | otherwise            = error "not a valid ACL tag type"
 
 data Qualifier = UserID UserID
                | GroupID GroupID
                  deriving (Eq, Show, Read)
 
 
-
-cFromEnum :: (Enum e, Integral i) => e -> i
-cFromEnum = fromIntegral . fromEnum
-
-cToEnum :: (Integral i, Enum e) => i -> e
-cToEnum = toEnum . fromIntegral
 
 aclFree :: Ptr a -> IO ()
 aclFree ptr = throwErrnoIfMinus1_ "acl_free" (acl_free (castPtr ptr))
@@ -276,7 +270,7 @@ setPermset ent perms =
 
 getTagType :: Entry -> IO Tag
 getTagType ent =
- (cToEnum . fst) <$>
+ (toTag . fst) <$>
  withEntry ent (\x ->
                 withAlloc (throwErrnoIfMinus1 "acl_get_tag_type"
                            . acl_get_tag_type x))
@@ -285,7 +279,7 @@ setTagType :: Entry -> Tag -> IO ()
 setTagType ent tag =
     withEntry ent $ \x ->
         throwErrnoIfMinus1_ "acl_set_tag_type" (acl_set_tag_type x
-                                                (cFromEnum tag))
+                                                (fromTag tag))
 
 getQualifier :: Entry -> IO (Maybe Qualifier)
 getQualifier ent = do
