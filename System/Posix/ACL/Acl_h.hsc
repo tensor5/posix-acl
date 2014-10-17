@@ -49,6 +49,10 @@ aclTypeDefault :: AclTypeT
 aclTypeDefault = #{const ACL_TYPE_DEFAULT}
 
 
+aclUndefinedId :: Num a => a
+aclUndefinedId = #{const ACL_UNDEFINED_ID}
+
+
 newtype ACL = ACL (ForeignPtr ACL)
 type AclT = Ptr ACL
 

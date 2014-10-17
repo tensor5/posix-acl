@@ -28,10 +28,15 @@ Source-Repository this
 Library
   Default-Language:     Haskell2010
   Build-Depends:        base == 4.*,
---                        bytestring == 0.10.*,
-                        containers == 0.5.*
+                        bytestring == 0.10.*,
+                        containers == 0.5.*,
+                        lifted-base == 0.2.*,
+                        monad-control == 0.3.*,
+                        transformers == 0.3.*,
+                        transformers-base == 0.4.*,
+                        unix
   Ghc-Options:          -Wall
   Exposed-Modules:      System.Posix.ACL
---                        System.Posix.ACL.Internals
-  Other-Modules:        System.Posix.ACL.Acl_h System.Posix.ACL.Internals
+                        System.Posix.ACL.Internals
+  Other-Modules:        System.Posix.ACL.Acl_h
   Extra-Libraries:      acl

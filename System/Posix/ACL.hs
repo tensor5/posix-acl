@@ -1,3 +1,6 @@
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+
 -- | Support for POSIX.1e /Access Control Lists/ (ACL), defined in
 -- section 23 of the draft standard IEEE Std 1003.1e.
 module System.Posix.ACL
@@ -20,13 +23,15 @@ module System.Posix.ACL
     ) where
 
 import           Control.Applicative          ((<$>))
-import           Control.Monad                (foldM, replicateM_, when)
-import           Data.Bits                    (Bits, (.&.))
-import           Data.Map                     hiding (null)
-import           System.Posix.ACL.Acl_h       (aclExecute, aclRead, aclWrite)
-import           System.Posix.ACL.Internals   hiding (ACL, Permset)
-import qualified System.Posix.ACL.Internals   as I
+import           Control.Arrow                (first)
+import           Control.Monad                (void, when)
+import           Control.Monad.Base           (MonadBase)
+import           Control.Monad.Trans.List     (ListT (..))
+import           Data.List                    (find)
+import           Data.Map                     hiding (map, null)
+import           System.Posix.ACL.Internals
 import           System.Posix.Types           (Fd, GroupID, UserID)
+import           System.Posix.User
 import           Text.ParserCombinators.ReadP
 import           Text.Read                    hiding ((+++), (<++))
 
@@ -36,11 +41,6 @@ data Permset = Permset { hasRead    :: Bool
                        , hasWrite   :: Bool
                        , hasExecute :: Bool
                        } deriving Eq
-
-toPermset :: (Bits a, Integral a) => a -> Permset
-toPermset a =
-    Permset (hasCPerm aclRead) (hasCPerm aclWrite) (hasCPerm aclExecute)
-        where hasCPerm x = x .&. fromIntegral a == x
 
 -- | No permission.
 emptyPermset :: Permset
@@ -265,143 +265,125 @@ parseExtShortTextForm = do
   return $ ExtendedACL ow (fromListWith unionPermsets us)
                        og (fromListWith unionPermsets gs) m ot
 
-pokeCPermset :: I.Permset -> Permset -> IO ()
-pokeCPermset cperms perms = do
-  when (hasRead perms) (addPerm cperms Read)
-  when (hasWrite perms) (addPerm cperms Write)
-  when (hasExecute perms) (addPerm cperms Execute)
+toAclT :: MonadBase IO m => ACL -> AclT m ()
+toAclT (MinimumACL ow og ot) =
+    void $ runListT $ getEntries
+             [setEntry UserObj ow, setEntry GroupObj og, setEntry Other ot]
+toAclT (ExtendedACL ow us og gr m ot) =
+    void $ runListT $ getEntries
+             ([setEntry UserObj ow] ++
+              map (uncurry setEntry . first User) (toList us) ++
+              [setEntry GroupObj og] ++
+              map (uncurry setEntry . first Group) (toList gr) ++
+              [setEntry Mask m, setEntry Other ot]
+             )
 
-toCACL :: ACL -> IO I.ACL
-toCACL (MinimumACL ow og ot) = do cacl <- newACL 3
-                                  replicateM_ 3 (createEntry cacl)
-                                  ents <- getEntries cacl
-                                  setUserObjEnt ow (head ents)
-                                  setGroupObjEnt og (ents!!1)
-                                  setOtherEnt ot (ents!!2)
-                                  return cacl
-toCACL (ExtendedACL ow us og gr m ot) = do
-  cacl <- newACL (4 + size us + size gr)
-  replicateM_ (4 + size us + size gr) (createEntry cacl)
-  ents <- getEntries cacl
-  setUserObjEnt ow (head ents)
-  mapM_ setUserEnt (zip (userSubStr ents) (toList us))
-  setGroupObjEnt og (groupElem ents)
-  mapM_ setGroupEnt (zip (groupSubStr ents) (toList gr))
-  setTagType (maskElem ents) Mask
-  m_p <- getPermset (maskElem ents)
-  pokeCPermset m_p m
-  setOtherEnt ot (otherElem ents)
-  return cacl
-      where userSubStr xs = take (size us) $ drop 1 xs
-            groupElem xs = xs!!(1 + size us)
-            groupSubStr xs = take (size gr) $ drop (2 + size us) xs
-            maskElem xs = xs!!(2 + size us + size gr)
-            otherElem xs = xs!!(3 + size us + size gr)
-            setUserEnt (e,(u,p)) = do setTagType e User
-                                      setQualifier e (UserID u)
-                                      s <- getPermset e
-                                      pokeCPermset s p
-            setGroupEnt (e,(g,p)) = do setTagType e Group
-                                       setQualifier e (GroupID g)
-                                       s <- getPermset e
-                                       pokeCPermset s p
+addPermset :: MonadBase IO m => Permset -> PermsetT m ()
+addPermset (Permset r w x) = do when r (addPerm Read)
+                                when w (addPerm Write)
+                                when x (addPerm Execute)
 
-setUserObjEnt :: Permset -> Entry -> IO ()
-setUserObjEnt p e = do setTagType e UserObj
-                       s <- getPermset e
-                       pokeCPermset s p
+setEntry :: MonadBase IO m => Tag -> Permset -> EntryT m ()
+setEntry t p = setTag t >> changePermset (addPermset p)
 
-setGroupObjEnt :: Permset -> Entry -> IO ()
-setGroupObjEnt p e = do setTagType e GroupObj
-                        s <- getPermset e
-                        pokeCPermset s p
-
-setOtherEnt :: Permset -> Entry -> IO ()
-setOtherEnt p e = do setTagType e Other
-                     s <- getPermset e
-                     pokeCPermset s p
+genericSet :: AclT IO () -> ACL -> IO ()
+genericSet aclt acl =
+    case acl of
+      MinimumACL{}              -> runNewAclT 3 $ do toAclT acl
+                                                     aclt
+      ExtendedACL _ us _ gr _ _ -> runNewAclT (4 + size us + size gr) $
+                                   do toAclT acl
+                                      aclt
 
 -- | Set the ACL for a file.
 setACL :: FilePath -> ACL -> IO ()
-setACL path acl = toCACL acl >>= setFileACL path Access
+setACL path = genericSet (setFileACL path Access)
 
 -- | Set the default ACL for a directory.
 setDefaultACL :: FilePath -> ACL -> IO ()
-setDefaultACL path acl = toCACL acl >>= setFileACL path Default
+setDefaultACL path = genericSet (setFileACL path Default)
 
 -- | Set the ACL for a file, given its file descriptor.
 fdSetACL :: Fd -> ACL -> IO ()
-fdSetACL fd acl = toCACL acl >>= setFdACL fd
+fdSetACL fd = genericSet (setFdACL fd)
+
+genericGetACL :: IO String -> IO ACL
+genericGetACL f = do udb <- getAllUserEntries
+                     gdb <- getAllGroupEntries
+                     readLong udb gdb <$> f
+    where readLong udb gdb str =
+              case readP_to_S (parseLongTextFrom' udb gdb) str of
+                []  -> error "getACL: error parsing ACL long text form"
+                x:_ -> fst x
 
 -- | Retrieve the ACL from a file.
 getACL :: FilePath -> IO ACL
-getACL path = getFileACL path Access >>= peekCACL
+getACL path = genericGetACL $ getFileACL path Access toText
 
 -- | Retrieve the default ACL from a directory (return @'Nothing'@ if there is
 -- no default ACL).
 getDefaultACL :: FilePath -> IO (Maybe ACL)
-getDefaultACL path = getFileACL path Default >>= maybePeekCACL
+getDefaultACL path = do udb <- getAllUserEntries
+                        gdb <- getAllGroupEntries
+                        readLong udb gdb <$> getFileACL path Default toText
+    where readLong udb gdb str =
+              case readP_to_S (parseLongTextFrom' udb gdb) str of
+                []  -> Nothing
+                x:_ -> Just $ fst x
 
 -- | Retrieve the ACL from a file, given its file descriptor.
 fdGetACL :: Fd -> IO ACL
-fdGetACL fd = getFdACL fd >>= peekCACL
+fdGetACL fd = genericGetACL $ getFdACL fd toText
 
-peekCACL :: I.ACL -> IO ACL
-peekCACL cacl = do
-  ents <- getEntries cacl
-  foldM addCEntry (MinimumACL emptyPermset emptyPermset emptyPermset) ents
+resolveUser :: [UserEntry] -> String -> Maybe UserID
+resolveUser db name = userID <$> find (\entry -> userName entry == name) db
 
-maybePeekCACL :: I.ACL -> IO (Maybe ACL)
-maybePeekCACL cacl = do
-  ents <- getEntries cacl
-  if null ents
-  then return Nothing
-  else Just <$>
-       foldM addCEntry (MinimumACL emptyPermset emptyPermset emptyPermset) ents
+resolveGroup :: [GroupEntry] -> String -> Maybe GroupID
+resolveGroup db name = groupID <$> find (\entry -> groupName entry == name) db
 
-addCEntry :: ACL -> I.Entry -> IO ACL
-addCEntry acl ent = do
-  tag <- getTagType ent
-  perms <- getPermset ent
-  n <- permsetToIntegral perms
-  addPermsetWithTag tag ent acl (toPermset (n::Int))
-    where addPermsetWithTag t e a p =
-              case t of
-                UserObj   -> return $ addUserObjPermset p a
-                User      -> do Just (UserID uid) <- getQualifier e
-                                return $ addUserPermset uid p a
-                GroupObj  -> return $ addGroupObjPermset p a
-                Group     -> do Just (GroupID gid) <- getQualifier e
-                                return $ addGroupPermset gid p a
-                Mask      -> return $ setMaskPermset p a
-                Other     -> return $ addOtherPermset p a
-                Undefined -> return undefined
+parseUser :: [UserEntry] -> ReadP UserID
+parseUser db = do name <- munch1 (/= ':')
+                  case resolveUser db name of
+                    Just uid -> return uid
+                    Nothing  -> fail ("cannot find " ++ name ++
+                                      " in user database")
 
+parseGroup :: [GroupEntry] -> ReadP GroupID
+parseGroup db = do name <- munch1 (/= ':')
+                   case resolveGroup db name of
+                     Just gid -> return gid
+                     Nothing  -> fail ("cannot find " ++ name ++
+                                       " in group database")
 
+parseExtLongTextFrom' :: [UserEntry] -> [GroupEntry] -> ReadP ACL
+parseExtLongTextFrom' udb gdb = do
+  _ <- string "user::"
+  ow <- parseLongTextPermset
+  us <- many $ do _ <- string "\nuser:"
+                  uid <- readPrec_to_P readPrec 0 <++ parseUser udb
+                  _ <- char ':'
+                  p1 <- parseLongTextPermset
+                  _ <- option p1 effective
+                  return (uid,p1)
+  _ <- string "\ngroup::"
+  og <- parseLongTextPermset
+  _ <- option og effective
+  gs <- many $ do _ <- string "\ngroup:"
+                  gid <- readPrec_to_P readPrec 0 <++ parseGroup gdb
+                  _ <- char ':'
+                  p2 <- parseLongTextPermset
+                  _ <- option p2 effective
+                  return (gid,p2)
+  _ <- string "\nmask::"
+  m <- parseLongTextPermset
+  _ <- string "\nother::"
+  ot <- parseLongTextPermset
+  return $ ExtendedACL ow (fromListWith unionPermsets us)
+                       og (fromListWith unionPermsets gs) m ot
+      where effective = do skipSpaces
+                           _ <- string "#effective:"
+                           parseLongTextPermset
 
-
-addUserPermset :: UserID -> Permset -> ACL -> ACL
-addUserPermset uid p (MinimumACL ow og ot) =
-    ExtendedACL ow (singleton uid p) og empty emptyPermset ot
-addUserPermset uid p acl =
-    acl { usersPerms = insertWith unionPermsets uid p (usersPerms acl) }
-
-addGroupPermset :: GroupID -> Permset -> ACL -> ACL
-addGroupPermset gid p (MinimumACL ow og ot) =
-    ExtendedACL ow empty og (singleton gid p) emptyPermset ot
-addGroupPermset gid p acl =
-    acl { groupsPerms = insertWith unionPermsets gid p (groupsPerms acl) }
-
-addUserObjPermset :: Permset -> ACL -> ACL
-addUserObjPermset p acl = acl { ownerPerms = unionPermsets p (ownerPerms acl) }
-
-addGroupObjPermset :: Permset -> ACL -> ACL
-addGroupObjPermset p acl =
-    acl { owningGroupPerms = unionPermsets p (owningGroupPerms acl) }
-
-setMaskPermset :: Permset -> ACL -> ACL
-setMaskPermset p (MinimumACL ow og ot) = ExtendedACL ow empty og empty p ot
-setMaskPermset p acl = acl { mask = unionPermsets p (mask acl) }
-
-addOtherPermset :: Permset -> ACL -> ACL
-addOtherPermset p acl = acl { otherPerms = unionPermsets p (otherPerms acl) }
+parseLongTextFrom' :: [UserEntry] -> [GroupEntry] -> ReadP ACL
+parseLongTextFrom' udb gdb =
+    parseMinLongTextFrom +++ parseExtLongTextFrom' udb gdb
