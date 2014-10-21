@@ -185,10 +185,11 @@ showsShortText n (ExtendedACL ow us og gr m ot) =
 
 instance Read ACL where
     readPrec = lift $ do skipSpaces
-                         parseLongTextFrom +++ parseShortTextForm
+                         parseLongTextFrom [] [] +++ parseShortTextForm
 
-parseLongTextFrom :: ReadP ACL
-parseLongTextFrom = parseMinLongTextFrom +++ parseExtLongTextFrom
+parseLongTextFrom :: [UserEntry] -> [GroupEntry] -> ReadP ACL
+parseLongTextFrom udb gdb =
+    parseMinLongTextFrom +++ parseExtLongTextFrom udb gdb
 
 parseMinLongTextFrom :: ReadP ACL
 parseMinLongTextFrom = do
@@ -200,12 +201,32 @@ parseMinLongTextFrom = do
   ot <- parseLongTextPermset
   return $ MinimumACL ow og ot
 
-parseExtLongTextFrom :: ReadP ACL
-parseExtLongTextFrom = do
+resolveUser :: [UserEntry] -> String -> Maybe UserID
+resolveUser db name = userID <$> find (\entry -> userName entry == name) db
+
+resolveGroup :: [GroupEntry] -> String -> Maybe GroupID
+resolveGroup db name = groupID <$> find (\entry -> groupName entry == name) db
+
+parseUser :: [UserEntry] -> ReadP UserID
+parseUser db = do name <- munch1 (/= ':')
+                  case resolveUser db name of
+                    Just uid -> return uid
+                    Nothing  -> fail ("cannot find " ++ name ++
+                                      " in user database")
+
+parseGroup :: [GroupEntry] -> ReadP GroupID
+parseGroup db = do name <- munch1 (/= ':')
+                   case resolveGroup db name of
+                     Just gid -> return gid
+                     Nothing  -> fail ("cannot find " ++ name ++
+                                       " in group database")
+
+parseExtLongTextFrom :: [UserEntry] -> [GroupEntry] -> ReadP ACL
+parseExtLongTextFrom udb gdb = do
   _ <- string "user::"
   ow <- parseLongTextPermset
   us <- many $ do _ <- string "\nuser:"
-                  uid <- readPrec_to_P readPrec 0
+                  uid <- readPrec_to_P readPrec 0 <++ parseUser udb
                   _ <- char ':'
                   p1 <- parseLongTextPermset
                   _ <- option p1 effective
@@ -214,7 +235,7 @@ parseExtLongTextFrom = do
   og <- parseLongTextPermset
   _ <- option og effective
   gs <- many $ do _ <- string "\ngroup:"
-                  gid <- readPrec_to_P readPrec 0
+                  gid <- readPrec_to_P readPrec 0 <++ parseGroup gdb
                   _ <- char ':'
                   p2 <- parseLongTextPermset
                   _ <- option p2 effective
@@ -312,7 +333,7 @@ genericGetACL f = do udb <- getAllUserEntries
                      gdb <- getAllGroupEntries
                      readLong udb gdb <$> f
     where readLong udb gdb str =
-              case readP_to_S (parseLongTextFrom' udb gdb) str of
+              case readP_to_S (parseLongTextFrom udb gdb) str of
                 []  -> error "getACL: error parsing ACL long text form"
                 x:_ -> fst x
 
@@ -327,63 +348,10 @@ getDefaultACL path = do udb <- getAllUserEntries
                         gdb <- getAllGroupEntries
                         readLong udb gdb <$> getFileACL path Default toText
     where readLong udb gdb str =
-              case readP_to_S (parseLongTextFrom' udb gdb) str of
+              case readP_to_S (parseLongTextFrom udb gdb) str of
                 []  -> Nothing
                 x:_ -> Just $ fst x
 
 -- | Retrieve the ACL from a file, given its file descriptor.
 fdGetACL :: Fd -> IO ACL
 fdGetACL fd = genericGetACL $ getFdACL fd toText
-
-resolveUser :: [UserEntry] -> String -> Maybe UserID
-resolveUser db name = userID <$> find (\entry -> userName entry == name) db
-
-resolveGroup :: [GroupEntry] -> String -> Maybe GroupID
-resolveGroup db name = groupID <$> find (\entry -> groupName entry == name) db
-
-parseUser :: [UserEntry] -> ReadP UserID
-parseUser db = do name <- munch1 (/= ':')
-                  case resolveUser db name of
-                    Just uid -> return uid
-                    Nothing  -> fail ("cannot find " ++ name ++
-                                      " in user database")
-
-parseGroup :: [GroupEntry] -> ReadP GroupID
-parseGroup db = do name <- munch1 (/= ':')
-                   case resolveGroup db name of
-                     Just gid -> return gid
-                     Nothing  -> fail ("cannot find " ++ name ++
-                                       " in group database")
-
-parseExtLongTextFrom' :: [UserEntry] -> [GroupEntry] -> ReadP ACL
-parseExtLongTextFrom' udb gdb = do
-  _ <- string "user::"
-  ow <- parseLongTextPermset
-  us <- many $ do _ <- string "\nuser:"
-                  uid <- readPrec_to_P readPrec 0 <++ parseUser udb
-                  _ <- char ':'
-                  p1 <- parseLongTextPermset
-                  _ <- option p1 effective
-                  return (uid,p1)
-  _ <- string "\ngroup::"
-  og <- parseLongTextPermset
-  _ <- option og effective
-  gs <- many $ do _ <- string "\ngroup:"
-                  gid <- readPrec_to_P readPrec 0 <++ parseGroup gdb
-                  _ <- char ':'
-                  p2 <- parseLongTextPermset
-                  _ <- option p2 effective
-                  return (gid,p2)
-  _ <- string "\nmask::"
-  m <- parseLongTextPermset
-  _ <- string "\nother::"
-  ot <- parseLongTextPermset
-  return $ ExtendedACL ow (fromListWith unionPermsets us)
-                       og (fromListWith unionPermsets gs) m ot
-      where effective = do skipSpaces
-                           _ <- string "#effective:"
-                           parseLongTextPermset
-
-parseLongTextFrom' :: [UserEntry] -> [GroupEntry] -> ReadP ACL
-parseLongTextFrom' udb gdb =
-    parseMinLongTextFrom +++ parseExtLongTextFrom' udb gdb
