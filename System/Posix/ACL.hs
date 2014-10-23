@@ -96,7 +96,7 @@ parseLongTextPermset = do
   r <- parseRead +++ parseDash
   w <- parseWrite +++ parseDash
   x <- parseExecute +++ parseDash
-  return (unionPermsets r (unionPermsets w x))
+  return (r `unionPermsets` w `unionPermsets` x)
 
 parseShortTextPermset :: ReadP Permset
 parseShortTextPermset = do
@@ -104,7 +104,7 @@ parseShortTextPermset = do
   r <- parseRead <++ return emptyPermset
   w <- parseWrite <++ return emptyPermset
   x <- parseExecute <++ return emptyPermset
-  return (unionPermsets r (unionPermsets w x))
+  return (r `unionPermsets` w `unionPermsets` x)
 
 parsePermset :: ReadP Permset
 parsePermset = parseLongTextPermset +++ parseShortTextPermset
@@ -202,10 +202,10 @@ parseMinLongTextFrom = do
   return $ MinimumACL ow og ot
 
 resolveUser :: [UserEntry] -> String -> Maybe UserID
-resolveUser db name = userID <$> find (\entry -> userName entry == name) db
+resolveUser db name = userID <$> find ((== name) . userName) db
 
 resolveGroup :: [GroupEntry] -> String -> Maybe GroupID
-resolveGroup db name = groupID <$> find (\entry -> groupName entry == name) db
+resolveGroup db name = groupID <$> find ((== name) . groupName) db
 
 parseUser :: [UserEntry] -> ReadP UserID
 parseUser db = do name <- munch1 (/= ':')

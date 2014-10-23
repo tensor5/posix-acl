@@ -104,7 +104,7 @@ data Tag = UserObj
 
 
 aclFree :: Ptr a -> IO ()
-aclFree ptr = throwErrnoIfMinus1_ "acl_free" (acl_free (castPtr ptr))
+aclFree = throwErrnoIfMinus1_ "acl_free" . acl_free . castPtr
 
 
 newtype AclT m a = AclT { unAclT :: ReaderT (Ptr C.AclT) m a }
@@ -124,14 +124,12 @@ instance MonadBaseControl b m => MonadBaseControl b (AclT m) where
 runAclT :: MonadBaseControl IO m => IO C.AclT -> AclT m a -> m a
 runAclT gen (AclT rd) =
     bracket (liftBase (gen >>= new))
-    (\p -> liftBase $ do acl <- peek p
-                         aclFree acl
+    (\p -> liftBase $ do peek p >>= aclFree
                          free p)
     (runReaderT rd)
 
 runNewAclT :: MonadBaseControl IO m => Int -> AclT m a -> m a
-runNewAclT n =
-    runAclT (throwErrnoIfNull "acl_init" $ acl_init $ fromIntegral n)
+runNewAclT = runAclT . throwErrnoIfNull "acl_init" . acl_init . fromIntegral
 
 runDupAclT :: MonadBaseControl IO m => AclT m a -> AclT m a
 runDupAclT aclt =
@@ -140,13 +138,12 @@ runDupAclT aclt =
 
 runFromExtAclT :: MonadBaseControl IO m => ExtRepr -> AclT m a -> m a
 runFromExtAclT (ExtRepr bs) =
-    runAclT (unsafeUseAsCStringLen bs $ \(p,_) ->
-             throwErrnoIfNull "acl_copy_int" $ acl_copy_int $ castPtr p)
+    runAclT $ unsafeUseAsCStringLen bs $
+            throwErrnoIfNull "acl_copy_int" . acl_copy_int . castPtr . fst
 
 runFromTextAclT :: MonadBaseControl IO m => String -> AclT m a -> m a
 runFromTextAclT str =
-    runAclT (withCString str (throwErrnoIfNull "acl_from_text" . acl_from_text))
-
+    runAclT $ withCString str $ throwErrnoIfNull "acl_from_text" . acl_from_text
 
 
 newtype EntryT m a = EntryT { unEntryT :: ReaderT (AclEntryT, C.AclT) m a }
@@ -167,20 +164,21 @@ instance MonadBaseControl b m => MonadBaseControl b (EntryT m) where
 runEntryT :: MonadBase IO m => EntryT m a -> AclT m a
 runEntryT (EntryT rd) =
     AclT $ ReaderT $ \p ->
-        liftBase ((,) <$> alloca (\q ->
-                                  do mask_ $
-                                           throwErrnoIfMinus1_ "acl_create_entry" $
-                                           acl_create_entry p q
-                                     peek q)
+        liftBase ((,) <$>
+                      alloca (\q ->
+                              do mask_ $
+                                       throwErrnoIfMinus1_ "acl_create_entry" $
+                                                           acl_create_entry p q
+                                 peek q)
                   <*> peek p)
         >>= runReaderT rd
 
 copyEntry :: MonadBase IO m => EntryT (EntryT m) ()
 copyEntry =
     EntryT $ ReaderT $ \(dest, _) ->
-        EntryT $ ReaderT $ \(src ,_) ->
-            liftBase $
-            throwErrnoIfMinus1_ "acl_copy_entry" $ acl_copy_entry dest src
+        EntryT $ ReaderT $
+               liftBase .
+               throwErrnoIfMinus1_ "acl_copy_entry" . acl_copy_entry dest . fst
 
 getEntry' :: MonadBase IO m => CInt -> EntryT m a -> MaybeT (AclT m) a
 getEntry' n (EntryT rd) =
@@ -225,6 +223,7 @@ deleteEntry =
     EntryT $ ReaderT $ \(entry, acl) -> liftBase $
     throwErrnoIfMinus1_ "acl_delete_entry" $ acl_delete_entry acl entry
 
+
 newtype PermsetT m a = PermsetT { unPermsetT :: ReaderT AclPermsetT m a }
     deriving ( Alternative, Applicative, Functor, Monad, MonadBase b, MonadFix
              , MonadIO, MonadPlus, MonadTrans )
@@ -249,7 +248,8 @@ changePermset (PermsetT rd) =
                                         acl_get_permset entry p
                     peek p
            ret <- runReaderT rd ps
-           liftBase $ throwErrnoIfMinus1_ "acl_set_permset" $ acl_set_permset entry ps
+           liftBase $ throwErrnoIfMinus1_ "acl_set_permset" $
+                    acl_set_permset entry ps
            return ret
 
 addPerm :: MonadBase IO m => Perm -> PermsetT m ()
@@ -260,8 +260,8 @@ addPerm perm =
 
 clearPerms :: MonadBase IO m => PermsetT m ()
 clearPerms =
-    PermsetT $ ReaderT $ \ps ->
-        liftBase $ throwErrnoIfMinus1_ "acl_clear_perms" $ acl_clear_perms ps
+    PermsetT $ ReaderT $
+    liftBase . throwErrnoIfMinus1_ "acl_clear_perms" . acl_clear_perms
 
 deletePerm :: MonadBase IO m => Perm -> PermsetT m ()
 deletePerm perm =
@@ -274,7 +274,6 @@ valid :: MonadBase IO m => AclT m Bool
 valid =
     AclT $ ReaderT $ liftBase .
              (peek >=> fmap (== 0) . acl_valid)
-
 
 -- | Frees and reallocate the @'ACL'@ when there there is not enough
 -- space inside it to allocate the mask.
@@ -317,10 +316,9 @@ setTag tag =
       Undefined -> setTagType entry aclUndefinedTag
     where setTagType e = throwErrnoIfMinus1_ "acl_set_tag_type" .
                          acl_set_tag_type e
-          setQualifier qual e = with qual $ \p ->
-                                throwErrnoIfMinus1_ "acl_set_qualifier" $
-                                                    acl_set_qualifier e $
-                                                    castPtr p
+          setQualifier qual e = with qual $
+                                throwErrnoIfMinus1_ "acl_set_qualifier" .
+                                acl_set_qualifier e . castPtr
 
 
 newtype ExtRepr = ExtRepr ByteString
@@ -358,7 +356,7 @@ getFileACL path typ =
 
 getFdACL :: MonadBaseControl IO m => Fd -> AclT m a -> m a
 getFdACL (Fd n) =
-    runAclT (throwErrnoIfNull "acl_get_fd" (acl_get_fd n))
+    runAclT $ throwErrnoIfNull "acl_get_fd" $ acl_get_fd n
 
 setFdACL :: MonadBase IO m => Fd -> AclT m ()
 setFdACL (Fd n) =
@@ -376,5 +374,5 @@ setFileACL path typ =
 -- | Delete the default ACL from a directory.
 deleteDefaultACL :: FilePath -> IO ()
 deleteDefaultACL file =
-    withCString file $ \x ->
-        throwErrnoIfMinus1_ "acl_delete_def_file" $ acl_delete_def_file x
+    withCString file $
+                throwErrnoIfMinus1_ "acl_delete_def_file" . acl_delete_def_file
