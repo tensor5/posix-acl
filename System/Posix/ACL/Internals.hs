@@ -7,7 +7,17 @@
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE UndecidableInstances       #-}
 
--- | Functions in this module are bindings to the C API defined in
+--------------------------------------------------------------------------------
+-- |
+-- Module      :  $Header$
+-- Copyright   :  © 2013-2014 Nicola Squartini
+-- License     :  BSD3
+--
+-- Maintainer  :  Nicola Squartini <tensor5@gmail.com>
+-- Stability   :  experimental
+-- Portability :  portable
+--
+-- Functions in this module are bindings to the C API defined in
 -- <http://users.suse.com/~agruen/acl/posix/Posix_1003.1e-990310.pdf IEEE Std 1003.1e>.
 -- The design goal is to be as low level as possible without having to allocate
 -- or deallocate memory, and remaining type-safe.  In order to reach this goal,
@@ -45,6 +55,9 @@
 -- represented by the short text form @u::rw,g::r,o::r@.  In words, it adds
 -- execute permission to the 1st entry of @u::rw,g::r,o::r@, producing
 -- @u::rwx,g::r,o::r@.
+--
+--------------------------------------------------------------------------------
+
 module System.Posix.ACL.Internals
     (
     -- * ACL initialization

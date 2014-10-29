@@ -2,8 +2,21 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE Safe                  #-}
 
--- | Support for POSIX.1e /Access Control Lists/ (ACL), defined in
--- section 23 of the draft standard IEEE Std 1003.1e.
+--------------------------------------------------------------------------------
+-- |
+-- Module      :  $Header$
+-- Copyright   :  © 2013-2014 Nicola Squartini
+-- License     :  BSD3
+--
+-- Maintainer  :  Nicola Squartini <tensor5@gmail.com>
+-- Stability   :  experimental
+-- Portability :  portable
+--
+-- Support for POSIX.1e /Access Control Lists/ (ACL), defined in section 23 of
+-- the draft standard IEEE Std 1003.1e.
+--
+--------------------------------------------------------------------------------
+
 module System.Posix.ACL
     ( Permset(..)
     , emptyPermset
