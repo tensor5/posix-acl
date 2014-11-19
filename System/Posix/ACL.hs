@@ -140,9 +140,11 @@ data TextForm = Long
 parseEntry :: TextForm -> [UserEntry] -> [GroupEntry] -> ReadP Entry
 parseEntry tf udb gdb =
     parseSingleEntry tf 'u' "ser" (Right UserObj) <|>
-    parseSingleEntry tf 'u' "ser" (Left $ User <$> (parseUser udb <++ readPrec_to_P readPrec 0)) <|>
+    parseSingleEntry tf 'u' "ser"
+      (Left $ User <$> parseUser udb <++ readPrec_to_P readPrec 0) <|>
     parseSingleEntry tf 'g' "roup" (Right GroupObj) <|>
-    parseSingleEntry tf 'g' "roup" (Left $ Group <$> (parseGroup gdb <++ readPrec_to_P readPrec 0)) <|>
+    parseSingleEntry tf 'g' "roup"
+      (Left $ Group <$> parseGroup gdb <++ readPrec_to_P readPrec 0) <|>
     parseSingleEntry tf 'm' "ask" (Right Mask) <|>
     parseSingleEntry tf 'o' "ther" (Right Other)
 
@@ -181,7 +183,8 @@ parseLongTextEntries udb gdb = do ls <- many line
                                   skipSpaces
                                   return $ catMaybes ls
     where line = do skipSpaces
-                    (comment >> return Nothing) <|> (do e <- parseEntry Long udb gdb
+                    (comment >> return Nothing) <|> (do e <- parseEntry
+                                                             Long udb gdb
                                                         skipWhites
                                                         optional comment
                                                         eol
