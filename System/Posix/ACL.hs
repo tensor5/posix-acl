@@ -201,7 +201,7 @@ parseShortTextEntries udb gdb =
 
 
 -- | Represent a valid ACL as defined in POSIX.1e. The @'Show'@ instance is
--- defined to output the /Long Text Form/ of the ACL (see section 23.3.1 of
+-- defined to output the /Short Text Form/ of the ACL (see section 23.3.2 of
 -- <http://users.suse.com/~agruen/acl/posix/Posix_1003.1e-990310.pdf IEEE Std 1003.1e>),
 -- while the @'Read'@ instance is defined to be able to parse both the long and
 -- short text form (@'read'@ only parses valid ACLs).
@@ -259,7 +259,7 @@ validACL es =
               else Nothing
 
 instance Show ACL where
-    showsPrec = showsLongText
+    showsPrec = showsShortText
 
 -- | Convert an ACL to its /Long Text Form/ (see section 23.3.1 of
 -- <http://users.suse.com/~agruen/acl/posix/Posix_1003.1e-990310.pdf IEEE Std 1003.1e>).
