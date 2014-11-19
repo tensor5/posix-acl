@@ -13,7 +13,7 @@
 -- Portability :  portable
 --
 -- Support for POSIX.1e /Access Control Lists/ (ACL), defined in section 23 of
--- the draft standard IEEE Std 1003.1e.
+-- the draft standard <http://users.suse.com/~agruen/acl/posix/Posix_1003.1e-990310.pdf IEEE Std 1003.1e>.
 --
 --------------------------------------------------------------------------------
 
@@ -197,10 +197,11 @@ parseShortTextEntries udb gdb =
     parseEntry Short udb gdb `sepBy1` (skipWhites >> char ',' >> skipWhites)
 
 
--- | Represent a valid ACL as defined in POSIX.1e. The @'Show'@
--- instance is defined to output the /Long Text Form/ of the ACL
--- (section 23.3.1), while the @'Read'@ instance is defined to be able
--- to parse both the long and short text form.
+-- | Represent a valid ACL as defined in POSIX.1e. The @'Show'@ instance is
+-- defined to output the /Long Text Form/ of the ACL (see section 23.3.1 of
+-- <http://users.suse.com/~agruen/acl/posix/Posix_1003.1e-990310.pdf IEEE Std 1003.1e>),
+-- while the @'Read'@ instance is defined to be able to parse both the long and
+-- short text form.
 data ACL = MinimumACL { ownerPerms       :: Permset
                       , owningGroupPerms :: Permset
                       , otherPerms       :: Permset
@@ -258,7 +259,7 @@ instance Show ACL where
     showsPrec = showsLongText
 
 -- | Convert an ACL to its /Long Text Form/ (see section 23.3.1 of
--- IEEE Std 1003.1e).
+-- <http://users.suse.com/~agruen/acl/posix/Posix_1003.1e-990310.pdf IEEE Std 1003.1e>).
 longTextForm :: ACL -> String
 longTextForm acl = showsLongText 0 acl ""
 
@@ -286,7 +287,7 @@ showsLongText n (ExtendedACL ow us og gr m ot) =
                                    else ("\t#effective:" ++) . showsPrec n int
 
 -- | Convert an ACL to its /Short Text Form/ (see section 23.3.2 of
--- IEEE Std 1003.1e).
+-- <http://users.suse.com/~agruen/acl/posix/Posix_1003.1e-990310.pdf IEEE Std 1003.1e>).
 shortTextFrom :: ACL -> String
 shortTextFrom acl = showsShortText 0 acl ""
 
