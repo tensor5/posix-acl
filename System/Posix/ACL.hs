@@ -36,18 +36,21 @@ module System.Posix.ACL
     , deleteDefaultACL
     ) where
 
-import           Control.Applicative          ((<$>))
+import           Control.Applicative          (empty, (<$>), (<*>), (<|>))
 import           Control.Arrow                (first)
 import           Control.Monad                (void, when)
 import           Control.Monad.Base           (MonadBase)
 import           Control.Monad.Trans.List     (ListT (..))
-import           Data.List                    (find)
-import           Data.Map                     hiding (map, null)
+import           Data.Function                (on)
+import           Data.List                    (find, nubBy, partition)
+import           Data.Map                     hiding (empty, foldl, map, null,
+                                               partition)
+import           Data.Maybe                   (catMaybes)
 import           System.Posix.ACL.Internals
 import           System.Posix.Types           (Fd, GroupID, UserID)
 import           System.Posix.User
 import           Text.ParserCombinators.ReadP
-import           Text.Read                    hiding ((+++), (<++))
+import           Text.Read                    hiding (get, look, (<++))
 
 
 -- | A combination of read, write and execute permissions.
@@ -106,25 +109,92 @@ parseDash = do _ <- satisfy (== '-')
 
 parseLongTextPermset :: ReadP Permset
 parseLongTextPermset = do
-  skipSpaces
-  r <- parseRead +++ parseDash
-  w <- parseWrite +++ parseDash
-  x <- parseExecute +++ parseDash
+  r <- parseRead <|> parseDash
+  w <- parseWrite <|> parseDash
+  x <- parseExecute <|> parseDash
   return (r `unionPermsets` w `unionPermsets` x)
 
 parseShortTextPermset :: ReadP Permset
 parseShortTextPermset = do
-  skipSpaces
   r <- parseRead <++ return emptyPermset
   w <- parseWrite <++ return emptyPermset
   x <- parseExecute <++ return emptyPermset
   return (r `unionPermsets` w `unionPermsets` x)
 
 parsePermset :: ReadP Permset
-parsePermset = parseLongTextPermset +++ parseShortTextPermset
+parsePermset = skipSpaces >> parseLongTextPermset <|> parseShortTextPermset
 
 instance Read Permset where
     readPrec = lift parsePermset
+
+
+data Entry = Entry
+    { entryTag     :: Tag
+    , entryPermset :: Permset
+    } deriving (Eq, Read, Show)
+
+data TextForm = Long
+              | Short
+                deriving Eq
+
+parseEntry :: TextForm -> [UserEntry] -> [GroupEntry] -> ReadP Entry
+parseEntry tf udb gdb =
+    parseSingleEntry tf 'u' "ser" (Right UserObj) <|>
+    parseSingleEntry tf 'u' "ser" (Left $ User <$> (parseUser udb <++ readPrec_to_P readPrec 0)) <|>
+    parseSingleEntry tf 'g' "roup" (Right GroupObj) <|>
+    parseSingleEntry tf 'g' "roup" (Left $ Group <$> (parseGroup gdb <++ readPrec_to_P readPrec 0)) <|>
+    parseSingleEntry tf 'm' "ask" (Right Mask) <|>
+    parseSingleEntry tf 'o' "ther" (Right Other)
+
+
+skipWhites :: ReadP ()
+skipWhites = do str <- look
+                skip str
+    where skip ('\t' : str) = get >> skip str
+          skip (' '  : str) = get >> skip str
+          skip _            = return ()
+
+parseSingleEntry :: TextForm -> Char -> String -> Either (ReadP Tag) Tag
+                 -> ReadP Entry
+parseSingleEntry tf x xs eit =
+    case tf of
+      Long  -> do void $ string (x:xs)
+                  Entry <$> secondField <*> parseLongTextPermset
+      Short -> do void $ char x
+                  optional (string xs)
+                  Entry <$> secondField <*> parseShortTextPermset
+    where secondField = do skipWhites
+                           void $ char ':'
+                           t <- case eit of
+                                  Left qual -> skipWhites >> qual
+                                  Right tag -> return tag
+                           skipWhites
+                           void $ char ':'
+                           skipWhites
+                           return t
+
+comment :: ReadP String
+comment = char '#' >> munch (/= '\n')
+
+parseLongTextEntries :: [UserEntry] -> [GroupEntry] -> ReadP [Entry]
+parseLongTextEntries udb gdb = do ls <- many line
+                                  skipSpaces
+                                  return $ catMaybes ls
+    where line = do skipSpaces
+                    (comment >> return Nothing) <|> (do e <- parseEntry Long udb gdb
+                                                        skipWhites
+                                                        optional comment
+                                                        eol
+                                                        return $ Just e)
+          eol = do str <- look
+                   case str of
+                     ""     -> return ()
+                     '\n':_ -> return ()
+                     _      -> empty
+
+parseShortTextEntries :: [UserEntry] -> [GroupEntry] -> ReadP [Entry]
+parseShortTextEntries udb gdb =
+    parseEntry Short udb gdb `sepBy1` (skipWhites >> char ',' >> skipWhites)
 
 
 -- | Represent a valid ACL as defined in POSIX.1e. The @'Show'@
@@ -143,6 +213,46 @@ data ACL = MinimumACL { ownerPerms       :: Permset
                        , otherPerms       :: Permset
                        }
            deriving Eq
+
+validACL :: [Entry] -> Maybe ACL
+validACL es =
+    let (uos,es1) = partition isUserObj es
+        (us, es2) = partition isUser es1
+        (gos,es3) = partition isGroupObj es2
+        (gs, es4) = partition isGroup es3
+        (ms, es5) = partition isMask es4
+        (os, [] ) = partition isOther es5
+    in case (uos,us,gos,gs,ms,os) of
+         ([u],[],[g],[],[] ,[o]) -> Just $ MinimumACL (entryPermset u)
+                                                      (entryPermset g)
+                                                      (entryPermset o)
+         ([u],_ ,[g],_ ,[m],[o]) ->
+             case (toMap tagUserID us, toMap tagGroupID gs) of
+               (Just mu, Just mg) -> Just $ ExtendedACL (entryPermset u)
+                                                        mu
+                                                        (entryPermset g)
+                                                        mg
+                                                        (entryPermset m)
+                                                        (entryPermset o)
+               _                  -> Nothing
+         _                       -> Nothing
+    where isUserObj (Entry UserObj _) = True
+          isUserObj _                 = False
+          isUser (Entry (User _) _) = True
+          isUser _                  = False
+          isGroupObj (Entry GroupObj _) = True
+          isGroupObj _                  = False
+          isGroup (Entry (Group _) _) = True
+          isGroup _                   = False
+          isMask (Entry Mask _) = True
+          isMask _              = False
+          isOther (Entry Other _) = True
+          isOther _               = False
+          toMap f xs =
+              if nubBy ((==) `on` (f . entryTag)) xs == xs
+              then Just $ fromList $
+                   map (\e -> (f $ entryTag e, entryPermset e)) xs
+              else Nothing
 
 instance Show ACL where
     showsPrec = showsLongText
@@ -198,22 +308,18 @@ showsShortText n (ExtendedACL ow us og gr m ot) =
           showsNamedGroup sh gid perm = sh . (",g:" ++) . showsNamed gid perm
 
 instance Read ACL where
-    readPrec = lift $ do skipSpaces
-                         parseLongTextFrom [] [] +++ parseShortTextForm
+    readPrec =
+        lift $ parseValidLongTextACL [] [] <|> parseValidShortTextACL [] []
 
-parseLongTextFrom :: [UserEntry] -> [GroupEntry] -> ReadP ACL
-parseLongTextFrom udb gdb =
-    parseMinLongTextFrom +++ parseExtLongTextFrom udb gdb
+parseValidLongTextACL :: [UserEntry] -> [GroupEntry] -> ReadP ACL
+parseValidLongTextACL udb gdb =
+    parseLongTextEntries udb gdb >>= maybe empty return . validACL
 
-parseMinLongTextFrom :: ReadP ACL
-parseMinLongTextFrom = do
-  _ <- string "user::"
-  ow <- parseLongTextPermset
-  _ <- string "\ngroup::"
-  og <- parseLongTextPermset
-  _ <- string "\nother::"
-  ot <- parseLongTextPermset
-  return $ MinimumACL ow og ot
+parseValidShortTextACL :: [UserEntry] -> [GroupEntry] -> ReadP ACL
+parseValidShortTextACL udb gdb =
+    skipSpaces >>
+    parseShortTextEntries udb gdb >>= maybe empty return . validACL
+
 
 resolveUser :: [UserEntry] -> String -> Maybe UserID
 resolveUser db name = userID <$> find ((== name) . userName) db
@@ -222,83 +328,18 @@ resolveGroup :: [GroupEntry] -> String -> Maybe GroupID
 resolveGroup db name = groupID <$> find ((== name) . groupName) db
 
 parseUser :: [UserEntry] -> ReadP UserID
-parseUser db = do name <- munch1 (/= ':')
+parseUser db = do name <- munch1 (`notElem` "\t :")
                   case resolveUser db name of
                     Just uid -> return uid
                     Nothing  -> fail ("cannot find " ++ name ++
                                       " in user database")
 
 parseGroup :: [GroupEntry] -> ReadP GroupID
-parseGroup db = do name <- munch1 (/= ':')
+parseGroup db = do name <- munch1 (`notElem` "\t :")
                    case resolveGroup db name of
                      Just gid -> return gid
                      Nothing  -> fail ("cannot find " ++ name ++
                                        " in group database")
-
-parseExtLongTextFrom :: [UserEntry] -> [GroupEntry] -> ReadP ACL
-parseExtLongTextFrom udb gdb = do
-  _ <- string "user::"
-  ow <- parseLongTextPermset
-  us <- many $ do _ <- string "\nuser:"
-                  uid <- readPrec_to_P readPrec 0 <++ parseUser udb
-                  _ <- char ':'
-                  p1 <- parseLongTextPermset
-                  _ <- option p1 effective
-                  return (uid,p1)
-  _ <- string "\ngroup::"
-  og <- parseLongTextPermset
-  _ <- option og effective
-  gs <- many $ do _ <- string "\ngroup:"
-                  gid <- readPrec_to_P readPrec 0 <++ parseGroup gdb
-                  _ <- char ':'
-                  p2 <- parseLongTextPermset
-                  _ <- option p2 effective
-                  return (gid,p2)
-  _ <- string "\nmask::"
-  m <- parseLongTextPermset
-  _ <- string "\nother::"
-  ot <- parseLongTextPermset
-  return $ ExtendedACL ow (fromListWith unionPermsets us)
-                       og (fromListWith unionPermsets gs) m ot
-      where effective = do skipSpaces
-                           _ <- string "#effective:"
-                           parseLongTextPermset
-
-parseShortTextForm :: ReadP ACL
-parseShortTextForm = parseMinShortTextForm +++ parseExtShortTextForm
-
-parseMinShortTextForm :: ReadP ACL
-parseMinShortTextForm = do
-  _ <- string "u::"
-  ow <- parseShortTextPermset
-  _ <- string ",g::"
-  og <- parseShortTextPermset
-  _ <- string ",o::"
-  ot <- parseShortTextPermset
-  return $ MinimumACL ow og ot
-
-parseExtShortTextForm :: ReadP ACL
-parseExtShortTextForm = do
-  _ <- string "u::"
-  ow <- parseShortTextPermset
-  us <- many $ do _ <- string ",u:"
-                  uid <- readPrec_to_P readPrec 0
-                  _ <- char ':'
-                  p1 <- parseShortTextPermset
-                  return (uid,p1)
-  _ <- string ",g::"
-  og <- parseShortTextPermset
-  gs <- many $ do _ <- string ",g:"
-                  gid <- readPrec_to_P readPrec 0
-                  _ <- char ':'
-                  p2 <- parseShortTextPermset
-                  return (gid,p2)
-  _ <- string ",m::"
-  m <- parseShortTextPermset
-  _ <- string ",o::"
-  ot <- parseShortTextPermset
-  return $ ExtendedACL ow (fromListWith unionPermsets us)
-                       og (fromListWith unionPermsets gs) m ot
 
 toAclT :: MonadBase IO m => ACL -> AclT m ()
 toAclT (MinimumACL ow og ot) =
@@ -346,10 +387,13 @@ genericGetACL :: IO String -> IO ACL
 genericGetACL f = do udb <- getAllUserEntries
                      gdb <- getAllGroupEntries
                      readLong udb gdb <$> f
-    where readLong udb gdb str =
-              case readP_to_S (parseLongTextFrom udb gdb) str of
-                []  -> error "getACL: error parsing ACL long text form"
-                x:_ -> fst x
+
+readLong :: [UserEntry] -> [GroupEntry] -> String -> ACL
+readLong udb gdb str =
+    case [ x | (x, "") <- readP_to_S (parseValidLongTextACL udb gdb) str ] of
+      [x] -> x
+      []  -> error "getACL: ambiguous parse of ACL long text form"
+      _   -> error "getACL: no parse of ACL long text form"
 
 -- | Retrieve the ACL from a file.
 getACL :: FilePath -> IO ACL
@@ -360,11 +404,9 @@ getACL path = genericGetACL $ getFileACL path Access toText
 getDefaultACL :: FilePath -> IO (Maybe ACL)
 getDefaultACL path = do udb <- getAllUserEntries
                         gdb <- getAllGroupEntries
-                        readLong udb gdb <$> getFileACL path Default toText
-    where readLong udb gdb str =
-              case readP_to_S (parseLongTextFrom udb gdb) str of
-                []  -> Nothing
-                x:_ -> Just $ fst x
+                        readLong' udb gdb <$> getFileACL path Default toText
+    where readLong' _   _   ""  = Nothing
+          readLong' udb gdb str = Just $ readLong udb gdb str
 
 -- | Retrieve the ACL from a file, given its file descriptor.
 fdGetACL :: Fd -> IO ACL

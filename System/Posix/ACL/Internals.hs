@@ -146,9 +146,9 @@ fromType Default = aclTypeDefault
 
 -- | Tag type and qualifier of an ACL.
 data Tag = UserObj
-         | User UserID
+         | User { tagUserID :: UserID }
          | GroupObj
-         | Group GroupID
+         | Group { tagGroupID :: GroupID }
          | Mask
          | Other
          | Undefined
