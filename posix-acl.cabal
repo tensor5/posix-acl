@@ -39,6 +39,6 @@ Library
                         unix
   Ghc-Options:          -Wall
   Exposed-Modules:      System.Posix.ACL
-                        System.Posix.ACL.Internals
+                        System.Posix.ACL.C
   Other-Modules:        System.Posix.ACL.Acl_h
   Extra-Libraries:      acl

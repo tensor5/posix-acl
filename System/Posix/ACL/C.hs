@@ -58,7 +58,7 @@
 --
 --------------------------------------------------------------------------------
 
-module System.Posix.ACL.Internals
+module System.Posix.ACL.C
     (
     -- * ACL initialization
       AclT

@@ -46,7 +46,7 @@ import           Data.List                    (find, nubBy, partition)
 import           Data.Map                     hiding (empty, foldl, map, null,
                                                partition)
 import           Data.Maybe                   (catMaybes)
-import           System.Posix.ACL.Internals
+import           System.Posix.ACL.C
 import           System.Posix.Types           (Fd, GroupID, UserID)
 import           System.Posix.User
 import           Text.ParserCombinators.ReadP
