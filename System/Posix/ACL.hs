@@ -43,14 +43,14 @@ import           Control.Monad.Base           (MonadBase)
 import           Control.Monad.Trans.List     (ListT (..))
 import           Data.Function                (on)
 import           Data.List                    (find, nubBy, partition)
-import           Data.Map                     hiding (empty, foldl, map, null,
-                                               partition)
+import           Data.Map                     hiding (empty, map, partition)
 import           Data.Maybe                   (catMaybes)
-import           System.Posix.ACL.C
 import           System.Posix.Types           (Fd, GroupID, UserID)
 import           System.Posix.User
 import           Text.ParserCombinators.ReadP
 import           Text.Read                    hiding (get, look, (<++))
+
+import           System.Posix.ACL.C
 
 
 -- | A combination of read, write and execute permissions.

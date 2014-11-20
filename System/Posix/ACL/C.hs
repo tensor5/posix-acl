@@ -116,9 +116,10 @@ import           Data.ByteString.Char8       (ByteString, packCStringLen,
 import           Data.ByteString.Unsafe      (unsafeUseAsCStringLen)
 import           Foreign.C
 import           Foreign.Safe
+import           System.Posix.Types          (Fd (..), GroupID, UserID)
+
 import           System.Posix.ACL.Acl_h      hiding (AclT)
 import qualified System.Posix.ACL.Acl_h      as C
-import           System.Posix.Types          (Fd (..), GroupID, UserID)
 
 
 -- | A single permission.
