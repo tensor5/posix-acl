@@ -293,6 +293,10 @@ getNextEntry :: MonadBase IO m => EntryT m a -> MaybeT (AclT m) a
 getNextEntry = getEntry' aclNextEntry
 
 -- | Run the list of given actions on the list of entries of the ACL.
+--
+-- /Warning/: using @'setTag'@ as one of the @'EntryT'@s of @'getEntries'@ is
+-- not recommended, as it may rearrange the list of entries inside the ACL,
+-- yielding unexpected results.
 getEntries  :: MonadBase IO m => [EntryT m a] -> ListT (AclT m) a
 getEntries []     = empty
 getEntries (e:es) =
@@ -414,6 +418,9 @@ getTag =
                            (peek . castPtr)
 
 -- | Set the tag of the entry.
+--
+-- /Warning/: using @'setTag'@ may rearrange the list of entries inside the ACL,
+-- yielding unexpected results when used together with @'getEntries'@.
 setTag :: MonadBase IO m => Tag -> EntryT m ()
 setTag tag =
     EntryT $ ReaderT $ \(entry, _) -> liftBase $

@@ -40,7 +40,6 @@ import           Control.Applicative          (empty, (<$>), (<*>), (<|>))
 import           Control.Arrow                (first)
 import           Control.Monad                (void, when)
 import           Control.Monad.Base           (MonadBase)
-import           Control.Monad.Trans.List     (ListT (..))
 import           Data.Function                (on)
 import           Data.List                    (find, nubBy, partition)
 import           Data.Map                     hiding (empty, map, partition)
@@ -347,24 +346,24 @@ parseGroup db = do name <- munch1 (`notElem` "\t :")
 
 toAclT :: MonadBase IO m => ACL -> AclT m ()
 toAclT (MinimumACL ow og ot) =
-    void $ runListT $ getEntries
-             [setEntry UserObj ow, setEntry GroupObj og, setEntry Other ot]
+    do createEntry UserObj ow
+       createEntry GroupObj og
+       createEntry Other ot
 toAclT (ExtendedACL ow us og gr m ot) =
-    void $ runListT $ getEntries
-             ([setEntry UserObj ow] ++
-              map (uncurry setEntry . first User) (toList us) ++
-              [setEntry GroupObj og] ++
-              map (uncurry setEntry . first Group) (toList gr) ++
-              [setEntry Mask m, setEntry Other ot]
-             )
+    do createEntry UserObj ow
+       mapM_ (uncurry createEntry . first User) (toList us)
+       createEntry GroupObj og
+       mapM_ (uncurry createEntry . first Group) (toList gr)
+       createEntry Mask m
+       createEntry Other ot
 
 addPermset :: MonadBase IO m => Permset -> PermsetT m ()
 addPermset (Permset r w x) = do when r (addPerm Read)
                                 when w (addPerm Write)
                                 when x (addPerm Execute)
 
-setEntry :: MonadBase IO m => Tag -> Permset -> EntryT m ()
-setEntry t p = setTag t >> changePermset (addPermset p)
+createEntry :: MonadBase IO m => Tag -> Permset -> AclT m ()
+createEntry t p = runEntryT (setTag t >> changePermset (addPermset p))
 
 genericSet :: AclT IO () -> ACL -> IO ()
 genericSet aclt acl =
