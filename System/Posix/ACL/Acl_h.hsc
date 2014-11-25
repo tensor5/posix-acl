@@ -70,11 +70,6 @@ aclNextEntry :: Num a => a
 aclNextEntry = #{const ACL_NEXT_ENTRY}
 
 
--- For ForeignPtr
-foreign import ccall "wrapper"
-  mkFinalizerPtr :: (Ptr a -> IO ()) -> IO (FinalizerPtr a)
-
-
 
 foreign import ccall unsafe acl_dup :: AclT -> IO AclT
 
