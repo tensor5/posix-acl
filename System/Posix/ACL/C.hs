@@ -187,6 +187,8 @@ runAclT gen (AclT rd) =
 -- | Run the given action on a newly created ACL with enough preallocated memory
 -- to hold @n@ entries.  Use @'createEntry'@ to create entries in the
 -- preallocated memory.
+--
+-- Call to @acl_init()@.
 newACL :: MonadBaseControl IO m => Int -> AclT m a -> m a
 newACL = runAclT . throwErrnoIfNull "acl_init" . acl_init . fromIntegral
 
@@ -200,6 +202,8 @@ newACL = runAclT . throwErrnoIfNull "acl_init" . acl_init . fromIntegral
 -- copies the ACL represented by @u::rw,g::r,o::r@ to a new ACL, calculates and
 -- sets the permissions of @'Mask'@ (see @'calcMask'@) in the newly created ACL
 -- and prints out the result.  It also prints out the original ACL.
+--
+-- Call to @acl_dup()@.
 dupACL :: MonadBaseControl IO m =>
           AclT m a  -- ^ action to be run on the duplicate
        -> AclT m a
@@ -209,6 +213,8 @@ dupACL aclt =
 
 -- | Run the given action on an ACL created according to the given external
 -- representation.
+--
+-- Call to @acl_copy_int()@.
 fromExt :: MonadBaseControl IO m => ExtRepr -> AclT m a -> m a
 fromExt (ExtRepr bs) =
     runAclT $ unsafeUseAsCStringLen bs $
@@ -217,6 +223,8 @@ fromExt (ExtRepr bs) =
 -- | Run the given action on an ACL created according to the given textual
 -- representation (both the /Long Text Form/ and /Short Text Form/ are
 -- accepted).
+--
+-- Call to @acl_from_text()@.
 fromText :: MonadBaseControl IO m => String -> AclT m a -> m a
 fromText str =
     runAclT $ withCString str $ throwErrnoIfNull "acl_from_text" . acl_from_text
@@ -243,6 +251,8 @@ instance MonadBaseControl b m => MonadBaseControl b (EntryT m) where
 
 -- | Create a new entry in the ACL an run the given action on it.  If necessary,
 -- the ACL will allocate memory for the new entry.
+--
+-- Call to @acl_create_entry()@.
 createEntry :: MonadBase IO m => EntryT m a -> AclT m a
 createEntry (EntryT rd) =
     AclT $ ReaderT $ \p ->
@@ -266,6 +276,8 @@ createEntry (EntryT rd) =
 -- copies the 2nd entry of @u::rw,u:2:rwx,g::r,m:rwx,o::r@ (namely @u:2:rwx@)
 -- into the 3rd entry of @u::rw,u:1:rw,u:8:rw,g::r,m:rwxo::r@ (namely @u:8:rw@)
 -- and prints the result.
+--
+-- Call to @acl_copy_entry()@.
 copyEntry :: MonadBase IO m => EntryT (EntryT m) ()
 copyEntry =
     EntryT $ ReaderT $ \(dest, _) ->
@@ -298,6 +310,8 @@ getNextEntry = getEntry' aclNextEntry
 -- /Warning/: using @'setTag'@ as one of the @'EntryT'@s of @'getEntries'@ is
 -- not recommended, as it may rearrange the list of entries inside the ACL,
 -- yielding unexpected results.
+--
+-- Call to @acl_get_entry()@.
 getEntries  :: MonadBase IO m => [EntryT m a] -> ListT (AclT m) a
 getEntries []     = empty
 getEntries (e:es) =
@@ -314,11 +328,15 @@ getEntries (e:es) =
 
 -- | Run the given action on the @n@-th entry of the ACL (entry enumeration
 -- begins from 0).
+--
+-- Call to @acl_get_entry()@.
 getEntry :: MonadBase IO m => Int -> EntryT m a -> AclT m a
 getEntry n ent =
     (!!n) <$> runListT (getEntries (replicate n (return undefined) ++ [ent]))
 
 -- | Delete the entry.
+--
+-- Call to @acl_delete_entry()@.
 --
 -- /Warning/: no further action should be performed on this entry.
 deleteEntry :: MonadBase IO m => EntryT m ()
@@ -348,6 +366,8 @@ instance MonadBaseControl b m => MonadBaseControl b (PermsetT m) where
     restoreM     = defaultRestoreM unStMPermset
 
 -- | Change the permission set of the entry.
+--
+-- Call to @acl_get_permset()@ and @acl_set_permset()@.
 changePermset :: MonadBase IO m => PermsetT m a -> EntryT m a
 changePermset (PermsetT rd) =
     EntryT $ ReaderT $ \(entry, _) ->
@@ -361,6 +381,8 @@ changePermset (PermsetT rd) =
            return ret
 
 -- | Add a specific permission.
+--
+-- Call to @acl_add_perm()@.
 addPerm :: MonadBase IO m => Perm -> PermsetT m ()
 addPerm perm =
     PermsetT $ ReaderT $ \ps ->
@@ -368,12 +390,16 @@ addPerm perm =
                  fromPerm perm
 
 -- | Clear all permissions from the permission set.
+--
+-- Call to @acl_clear_perms()@.
 clearPerms :: MonadBase IO m => PermsetT m ()
 clearPerms =
     PermsetT $ ReaderT $
     liftBase . throwErrnoIfMinus1_ "acl_clear_perms" . acl_clear_perms
 
 -- | Remove a specific permission.
+--
+-- Call to @acl_delete_perm()@.
 deletePerm :: MonadBase IO m => Perm -> PermsetT m ()
 deletePerm perm =
     PermsetT $ ReaderT $ \ps ->
@@ -382,6 +408,8 @@ deletePerm perm =
 
 -- | Run a validity check on the ACL (see @acl_valid()@ in section 23.4.28 of
 -- <http://users.suse.com/~agruen/acl/posix/Posix_1003.1e-990310.pdf IEEE Std 1003.1e>).
+--
+-- Call to @acl_valid()@.
 valid :: MonadBase IO m => AclT m Bool
 valid =
     AclT $ ReaderT $ liftBase .
@@ -392,6 +420,8 @@ valid =
 -- granted by all entries of tag type @'Group'@, @'GroupObj'@, or @'User'@.  If
 -- the ACL already contains a @'Mask'@ entry, its permissions are overwritten;
 -- if it does not contain a @'Mask'@ entry, one is added.
+--
+-- Call to @acl_calc_mask()@.
 calcMask :: MonadBase IO m => AclT m ()
 calcMask =
     AclT $ ReaderT $
@@ -399,6 +429,8 @@ calcMask =
 
 
 -- | Get the entry's tag.
+--
+-- Call to @acl_get_tag_type()@ and  possibly @acl_get_qualifier()@.
 getTag :: MonadBase IO m => EntryT m Tag
 getTag =
     EntryT $ ReaderT $ \(entry, _) -> liftBase $
@@ -419,6 +451,8 @@ getTag =
                            (peek . castPtr)
 
 -- | Set the tag of the entry.
+--
+-- Call to @acl_set_tag_type()@ and possibly @acl_set_qualifier()@.
 --
 -- /Warning/: using @'setTag'@ may rearrange the list of entries inside the ACL,
 -- yielding unexpected results when used together with @'getEntries'@.
@@ -451,6 +485,8 @@ instance Show ExtRepr where
     show (ExtRepr bs) = unpack bs
 
 -- | Return the external representation of the ACL.
+--
+-- Call to @acl_copy_ext()@ and @acl_size()@.
 copyExt :: MonadBase IO m => AclT m ExtRepr
 copyExt =
     AclT $ ReaderT $ \p -> liftBase $
@@ -463,6 +499,8 @@ copyExt =
 
 -- | Return the /Long Text Form/ of the ACL (section 23.3.1 of
 -- <http://users.suse.com/~agruen/acl/posix/Posix_1003.1e-990310.pdf IEEE Std 1003.1e>).
+--
+-- Call to @acl_to_text()@.
 toText :: MonadBase IO m => AclT m String
 toText =
     AclT $ ReaderT $ \p -> liftBase $
@@ -475,23 +513,31 @@ toText =
 
 
 -- | Run the action on the ACL of type @'Type'@ of the given file.
+--
+-- Call to @acl_get_file()@.
 getFileACL :: MonadBaseControl IO m => FilePath -> Type -> AclT m a -> m a
 getFileACL path typ =
     runAclT (withCString path $ \x ->
              throwErrnoIfNull "acl_get_file" (acl_get_file x (fromType typ)))
 
 -- | Run the action on the ACL of the given file descriptor.
+--
+-- Call to @acl_get_fd()@.
 getFdACL :: MonadBaseControl IO m => Fd -> AclT m a -> m a
 getFdACL (Fd n) =
     runAclT $ throwErrnoIfNull "acl_get_fd" $ acl_get_fd n
 
 -- | Set the ACL of the given file descriptor.
+--
+-- Call to @acl_set_fd()@.
 setFdACL :: MonadBase IO m => Fd -> AclT m ()
 setFdACL (Fd n) =
     AclT $ ReaderT $
          liftBase . (peek >=> throwErrnoIfMinus1_ "acl_set_fd" . acl_set_fd n)
 
 -- | Set the ACL of type @'Type'@ of the given file.
+--
+-- Call to @acl_set_file()@.
 setFileACL :: MonadBase IO m => FilePath -> Type -> AclT m ()
 setFileACL path typ =
     AclT $ ReaderT $ \p -> liftBase $
@@ -501,6 +547,8 @@ setFileACL path typ =
                                     acl_set_file x (fromType typ) acl
 
 -- | Delete the default ACL from a directory.
+--
+-- Call to @acl_delete_def_file()@.
 deleteDefaultACL :: FilePath -> IO ()
 deleteDefaultACL file =
     withCString file $
