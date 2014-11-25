@@ -346,31 +346,31 @@ parseGroup db = do name <- munch1 (`notElem` "\t :")
 
 toAclT :: MonadBase IO m => ACL -> AclT m ()
 toAclT (MinimumACL ow og ot) =
-    do createEntry UserObj ow
-       createEntry GroupObj og
-       createEntry Other ot
+    do newEntry UserObj ow
+       newEntry GroupObj og
+       newEntry Other ot
 toAclT (ExtendedACL ow us og gr m ot) =
-    do createEntry UserObj ow
-       mapM_ (uncurry createEntry . first User) (toList us)
-       createEntry GroupObj og
-       mapM_ (uncurry createEntry . first Group) (toList gr)
-       createEntry Mask m
-       createEntry Other ot
+    do newEntry UserObj ow
+       mapM_ (uncurry newEntry . first User) (toList us)
+       newEntry GroupObj og
+       mapM_ (uncurry newEntry . first Group) (toList gr)
+       newEntry Mask m
+       newEntry Other ot
 
 addPermset :: MonadBase IO m => Permset -> PermsetT m ()
 addPermset (Permset r w x) = do when r (addPerm Read)
                                 when w (addPerm Write)
                                 when x (addPerm Execute)
 
-createEntry :: MonadBase IO m => Tag -> Permset -> AclT m ()
-createEntry t p = runEntryT (setTag t >> changePermset (addPermset p))
+newEntry :: MonadBase IO m => Tag -> Permset -> AclT m ()
+newEntry t p = createEntry (setTag t >> changePermset (addPermset p))
 
 genericSet :: AclT IO () -> ACL -> IO ()
 genericSet aclt acl =
     case acl of
-      MinimumACL{}              -> runNewAclT 3 $ do toAclT acl
-                                                     aclt
-      ExtendedACL _ us _ gr _ _ -> runNewAclT (4 + size us + size gr) $
+      MinimumACL{}              -> newACL 3 $ do toAclT acl
+                                                 aclt
+      ExtendedACL _ us _ gr _ _ -> newACL (4 + size us + size gr) $
                                    do toAclT acl
                                       aclt
 

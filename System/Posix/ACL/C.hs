@@ -44,17 +44,16 @@
 -- For example in
 --
 -- @
--- 'runFromTextAclT' "u::rw,g::r,o::r" $ 'getEntry' 0 $ 'changePermset' $ 'addPerm' 'Execute'
+-- 'fromText' "u::rw,g::r,o::r" $ 'getEntry' 0 $ 'changePermset' $ 'addPerm' 'Execute'
 -- @
 --
 -- @'addPerm' 'Execute'@ is the @'PermsetT'@ that adds the execute permission,
 -- @'changePermset'@ converts @'PermsetT'@ into @'EntryT'@, @'getEntry' 0@
 -- modifies the 1st entry of the ACL according to the action contained in
--- @'EntryT'@ (thus converts @'EntryT'@ into @'AclT'@), and finally
--- @'runFromTextAclT' "u::rw,g::r,o::r"@ runs the @'AclT'@ action on the ACL
--- represented by the short text form @u::rw,g::r,o::r@.  In words, it adds
--- execute permission to the 1st entry of @u::rw,g::r,o::r@, producing
--- @u::rwx,g::r,o::r@.
+-- @'EntryT'@ (thus converts @'EntryT'@ into @'AclT'@), and finally @'fromText'
+-- "u::rw,g::r,o::r"@ runs the @'AclT'@ action on the ACL represented by the
+-- short text form @u::rw,g::r,o::r@.  In words, it adds execute permission to
+-- the 1st entry of @u::rw,g::r,o::r@, producing @u::rwx,g::r,o::r@.
 --
 --------------------------------------------------------------------------------
 
@@ -62,11 +61,11 @@ module System.Posix.ACL.C
     (
     -- * ACL initialization
       AclT
-    , runNewAclT, runDupAclT
+    , newACL, dupACL
 
     -- * ACL entry manipulation
     , EntryT
-    , runEntryT, getEntries, getEntry
+    , createEntry, getEntries, getEntry
 
     , copyEntry
     , deleteEntry
@@ -93,8 +92,8 @@ module System.Posix.ACL.C
     -- * ACL format translation
     , ExtRepr
     , copyExt
-    , runFromExtAclT
-    , runFromTextAclT
+    , fromExt
+    , fromText
     , toText
 
     ) where
@@ -163,8 +162,7 @@ aclFree = throwErrnoIfMinus1_ "acl_free" . acl_free . castPtr
 
 -- | Action to be performed on an ACL.  The action contained in the transformer
 -- @'AclT'@ can be executed in the base monad using one of the functions
--- @'runNewAclT'@, @'getFdACL'@, @'getFileACL'@, @'runFromExtAclT'@ or
--- @'runFromTextAclT'@.
+-- @'newACL'@, @'getFdACL'@, @'getFileACL'@, @'fromExt'@ or @'fromText'@.
 newtype AclT m a = AclT { unAclT :: ReaderT (Ptr C.AclT) m a }
     deriving ( Alternative, Applicative, Functor, Monad, MonadBase b, MonadFix
              , MonadIO, MonadPlus, MonadTrans )
@@ -187,44 +185,44 @@ runAclT gen (AclT rd) =
     (runReaderT rd)
 
 -- | Run the given action on a newly created ACL with @n@ entries.
-runNewAclT :: MonadBaseControl IO m => Int -> AclT m a -> m a
-runNewAclT = runAclT . throwErrnoIfNull "acl_init" . acl_init . fromIntegral
+newACL :: MonadBaseControl IO m => Int -> AclT m a -> m a
+newACL = runAclT . throwErrnoIfNull "acl_init" . acl_init . fromIntegral
 
 -- | Create a copy of the current ACL and run the given action on the duplicate.
 -- For example
 --
 -- @
--- 'runFromTextAclT' "u::rw,g::r,o::r" $ 'runDupAclT' ('calcMask' >> 'toText' >>= 'Control.Monad.Trans.Class.lift' . 'print') >> 'toText' >>= 'Control.Monad.Trans.Class.lift' . 'print'
+-- 'fromText' "u::rw,g::r,o::r" $ 'dupACL' ('calcMask' >> 'toText' >>= 'Control.Monad.Trans.Class.lift' . 'print') >> 'toText' >>= 'Control.Monad.Trans.Class.lift' . 'print'
 -- @
 --
 -- copies the ACL represented by @u::rw,g::r,o::r@ to a new ACL, calculates and
 -- sets the permissions of @'Mask'@ (see @'calcMask'@) in the newly created ACL
 -- and prints out the result.  It also prints out the original ACL.
-runDupAclT :: MonadBaseControl IO m =>
-              AclT m a  -- ^ action to be run on the duplicate
-           -> AclT m a
-runDupAclT aclt =
+dupACL :: MonadBaseControl IO m =>
+          AclT m a  -- ^ action to be run on the duplicate
+       -> AclT m a
+dupACL aclt =
     AclT $ ReaderT $ \p ->
         runAclT (peek p >>= (throwErrnoIfNull "acl_dup" . acl_dup)) aclt
 
 -- | Run the given action on an ACL created according to the given external
 -- representation.
-runFromExtAclT :: MonadBaseControl IO m => ExtRepr -> AclT m a -> m a
-runFromExtAclT (ExtRepr bs) =
+fromExt :: MonadBaseControl IO m => ExtRepr -> AclT m a -> m a
+fromExt (ExtRepr bs) =
     runAclT $ unsafeUseAsCStringLen bs $
             throwErrnoIfNull "acl_copy_int" . acl_copy_int . castPtr . fst
 
 -- | Run the given action on an ACL created according to the given textual
 -- representation (both the /Long Text Form/ and /Short Text Form/ are
 -- accepted).
-runFromTextAclT :: MonadBaseControl IO m => String -> AclT m a -> m a
-runFromTextAclT str =
+fromText :: MonadBaseControl IO m => String -> AclT m a -> m a
+fromText str =
     runAclT $ withCString str $ throwErrnoIfNull "acl_from_text" . acl_from_text
 
 
 -- | Action to be performed on an ACL entry.  In order to execute the action
 -- contained in the @'EntryT'@ transformer in the base monad, @'EntryT'@ must
--- first be converted into @'AclT'@ using one of the functions @'runEntryT'@,
+-- first be converted into @'AclT'@ using one of the functions @'createEntry'@,
 -- @'getEntries'@ or @'getEntry'@.
 newtype EntryT m a = EntryT { unEntryT :: ReaderT (AclEntryT, C.AclT) m a }
     deriving ( Alternative, Applicative, Functor, Monad, MonadBase b, MonadFix
@@ -242,8 +240,8 @@ instance MonadBaseControl b m => MonadBaseControl b (EntryT m) where
     restoreM     = defaultRestoreM unStMEntry
 
 -- | Create a new entry in the ACL an run the given action on it.
-runEntryT :: MonadBase IO m => EntryT m a -> AclT m a
-runEntryT (EntryT rd) =
+createEntry :: MonadBase IO m => EntryT m a -> AclT m a
+createEntry (EntryT rd) =
     AclT $ ReaderT $ \p ->
         liftBase ((,) <$>
                       alloca (\q ->
@@ -259,7 +257,7 @@ runEntryT (EntryT rd) =
 -- different ACL.  For example
 --
 -- @
--- 'runFromTextAclT' "u::rw,u:2:rwx,g::r,m:rwx,o::r" $ 'getEntry' 1 $ 'runFromTextAclT' "u::rw,u:1:rw,u:8:rw,g::r,m:rwxo::r" ('getEntry' 2 'copyEntry' >> 'toText')
+-- 'fromText' "u::rw,u:2:rwx,g::r,m:rwx,o::r" $ 'getEntry' 1 $ 'fromText' "u::rw,u:1:rw,u:8:rw,g::r,m:rwxo::r" ('getEntry' 2 'copyEntry' >> 'toText')
 -- @
 --
 -- copies the 2nd entry of @u::rw,u:2:rwx,g::r,m:rwx,o::r@ (namely @u:2:rwx@)
