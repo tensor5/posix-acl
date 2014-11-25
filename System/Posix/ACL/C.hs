@@ -184,7 +184,9 @@ runAclT gen (AclT rd) =
                          free p)
     (runReaderT rd)
 
--- | Run the given action on a newly created ACL with @n@ entries.
+-- | Run the given action on a newly created ACL with enough preallocated memory
+-- to hold @n@ entries.  Use @'createEntry'@ to create entries in the
+-- preallocated memory.
 newACL :: MonadBaseControl IO m => Int -> AclT m a -> m a
 newACL = runAclT . throwErrnoIfNull "acl_init" . acl_init . fromIntegral
 
@@ -239,7 +241,8 @@ instance MonadBaseControl b m => MonadBaseControl b (EntryT m) where
     liftBaseWith = defaultLiftBaseWith StMEntry
     restoreM     = defaultRestoreM unStMEntry
 
--- | Create a new entry in the ACL an run the given action on it.
+-- | Create a new entry in the ACL an run the given action on it.  If necessary,
+-- the ACL will allocate memory for the new entry.
 createEntry :: MonadBase IO m => EntryT m a -> AclT m a
 createEntry (EntryT rd) =
     AclT $ ReaderT $ \p ->
