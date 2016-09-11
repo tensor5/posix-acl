@@ -168,14 +168,14 @@ newtype AclT m a = AclT { unAclT :: ReaderT (Ptr C.AclT) m a }
              , MonadIO, MonadPlus, MonadTrans )
 
 instance MonadTransControl AclT where
-    newtype StT AclT a = StAcl { unStAcl ::  StT (ReaderT (Ptr C.AclT)) a }
-    liftWith = defaultLiftWith AclT unAclT StAcl
-    restoreT = defaultRestoreT AclT unStAcl
+    type StT AclT a = StT (ReaderT (Ptr C.AclT)) a
+    liftWith = defaultLiftWith AclT unAclT
+    restoreT = defaultRestoreT AclT
 
 instance MonadBaseControl b m => MonadBaseControl b (AclT m) where
-    newtype StM (AclT m) a = StMAcl { unStMAcl :: ComposeSt AclT m a }
-    liftBaseWith = defaultLiftBaseWith StMAcl
-    restoreM     = defaultRestoreM unStMAcl
+    type StM (AclT m) a = ComposeSt AclT m a
+    liftBaseWith = defaultLiftBaseWith
+    restoreM     = defaultRestoreM
 
 runAclT :: MonadBaseControl IO m => IO C.AclT -> AclT m a -> m a
 runAclT gen (AclT rd) =
@@ -239,15 +239,14 @@ newtype EntryT m a = EntryT { unEntryT :: ReaderT (AclEntryT, C.AclT) m a }
              , MonadIO, MonadPlus, MonadTrans )
 
 instance MonadTransControl EntryT where
-    newtype StT EntryT a =
-        StEntry { unStEntry ::  StT (ReaderT (AclEntryT, C.AclT)) a }
-    liftWith = defaultLiftWith EntryT unEntryT StEntry
-    restoreT = defaultRestoreT EntryT unStEntry
+    type StT EntryT a = StT (ReaderT (AclEntryT, C.AclT)) a
+    liftWith = defaultLiftWith EntryT unEntryT
+    restoreT = defaultRestoreT EntryT
 
 instance MonadBaseControl b m => MonadBaseControl b (EntryT m) where
-    newtype StM (EntryT m) a = StMEntry { unStMEntry :: ComposeSt EntryT m a }
-    liftBaseWith = defaultLiftBaseWith StMEntry
-    restoreM     = defaultRestoreM unStMEntry
+    type StM (EntryT m) a = ComposeSt EntryT m a
+    liftBaseWith = defaultLiftBaseWith
+    restoreM     = defaultRestoreM
 
 -- | Create a new entry in the ACL an run the given action on it.  If necessary,
 -- the ACL will allocate memory for the new entry.
@@ -354,16 +353,14 @@ newtype PermsetT m a = PermsetT { unPermsetT :: ReaderT AclPermsetT m a }
              , MonadIO, MonadPlus, MonadTrans )
 
 instance MonadTransControl PermsetT where
-    newtype StT PermsetT a =
-        StPermset { unStPermset ::  StT (ReaderT AclPermsetT) a }
-    liftWith = defaultLiftWith PermsetT unPermsetT StPermset
-    restoreT = defaultRestoreT PermsetT unStPermset
+    type StT PermsetT a = StT (ReaderT AclPermsetT) a
+    liftWith = defaultLiftWith PermsetT unPermsetT
+    restoreT = defaultRestoreT PermsetT
 
 instance MonadBaseControl b m => MonadBaseControl b (PermsetT m) where
-    newtype StM (PermsetT m) a =
-        StMPermset { unStMPermset :: ComposeSt PermsetT m a }
-    liftBaseWith = defaultLiftBaseWith StMPermset
-    restoreM     = defaultRestoreM unStMPermset
+    type StM (PermsetT m) a = ComposeSt PermsetT m a
+    liftBaseWith = defaultLiftBaseWith
+    restoreM     = defaultRestoreM
 
 -- | Change the permission set of the entry.
 --

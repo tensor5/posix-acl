@@ -35,8 +35,8 @@ Library
                         bytestring == 0.10.*,
                         containers == 0.5.*,
                         lifted-base == 0.2.*,
-                        monad-control == 0.3.*,
                         transformers == 0.3.*,
+                        monad-control == 1.0.*,
                         transformers-base == 0.4.*,
                         unix
   Ghc-Options:          -Wall
