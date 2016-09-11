@@ -113,8 +113,8 @@ import           Control.Monad.Trans.Reader  (ReaderT (..), runReaderT)
 import           Data.ByteString.Char8       (ByteString, packCStringLen,
                                               unpack)
 import           Data.ByteString.Unsafe      (unsafeUseAsCStringLen)
+import           Foreign
 import           Foreign.C
-import           Foreign.Safe
 import           System.Posix.Types          (Fd (..), GroupID, UserID)
 
 import           System.Posix.ACL.Acl_h      hiding (AclT)
