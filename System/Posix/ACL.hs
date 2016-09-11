@@ -148,8 +148,8 @@ parseEntry tf udb gdb =
     parseSingleEntry tf 'o' "ther" (Right Other)
 
 
-skipWhites :: ReadP ()
-skipWhites = do str <- look
+skipBlanks :: ReadP ()
+skipBlanks = do str <- look
                 skip str
     where skip ('\t' : str) = get >> skip str
           skip (' '  : str) = get >> skip str
@@ -164,14 +164,14 @@ parseSingleEntry tf x xs eit =
       Short -> do void $ char x
                   optional (string xs)
                   Entry <$> secondField <*> parseShortTextPermset
-    where secondField = do skipWhites
+    where secondField = do skipBlanks
                            void $ char ':'
                            t <- case eit of
-                                  Left qual -> skipWhites >> qual
+                                  Left qual -> skipBlanks >> qual
                                   Right tag -> return tag
-                           skipWhites
+                           skipBlanks
                            void $ char ':'
-                           skipWhites
+                           skipBlanks
                            return t
 
 comment :: ReadP String
@@ -184,7 +184,7 @@ parseLongTextEntries udb gdb = do ls <- many line
     where line = do skipSpaces
                     (comment >> return Nothing) <|> (do e <- parseEntry
                                                              Long udb gdb
-                                                        skipWhites
+                                                        skipBlanks
                                                         optional comment
                                                         eol
                                                         return $ Just e)
@@ -196,7 +196,7 @@ parseLongTextEntries udb gdb = do ls <- many line
 
 parseShortTextEntries :: [UserEntry] -> [GroupEntry] -> ReadP [Entry]
 parseShortTextEntries udb gdb =
-    parseEntry Short udb gdb `sepBy1` (skipWhites >> char ',' >> skipWhites)
+    parseEntry Short udb gdb `sepBy1` (skipBlanks >> char ',' >> skipBlanks)
 
 
 -- | Represent a valid ACL as defined in POSIX.1e. The @'Show'@ instance is
